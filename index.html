@@ -64,8 +64,9 @@
   .stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;padding:8px;min-height:0;}
   .card{position:absolute;width:min(320px,86vw);background:var(--card);border:1px solid var(--line);
     border-radius:22px;box-shadow:0 12px 28px rgba(150,100,90,.16);overflow:hidden;display:flex;flex-direction:column;touch-action:pan-y;user-select:none;}
-  .imgwrap{position:relative;height:158px;} .imgwrap svg{display:block;width:100%;height:100%;}
-  .imgwrap .model3d{position:absolute;inset:0;width:100%;height:100%;background:radial-gradient(120% 120% at 50% 25%,#fbeee6 0%,#efdccf 72%,#e7cebf 100%);}
+  .imgwrap{position:relative;height:238px;} .imgwrap svg{display:block;width:100%;height:100%;}
+  .imgwrap .model3d{position:absolute;inset:0;width:100%;height:100%;background:radial-gradient(circle at 50% 32%,#ffffff 0%,#eef4fb 55%,#dfeafb 100%);}
+  .imgwrap .wimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
   .imgwrap .model3d canvas{width:100%!important;height:100%!important;display:block;cursor:grab;} .imgwrap .model3d canvas:active{cursor:grabbing;}
   .aitag{position:absolute;top:9px;left:9px;font-size:10px;font-weight:600;color:#8a5a4c;background:rgba(255,255,255,.8);border:1px solid var(--rose-bd);padding:3px 8px;border-radius:999px;}
   .save{position:absolute;top:8px;right:8px;width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.85);cursor:pointer;font-size:17px;color:#c9b6ad;display:flex;align-items:center;justify-content:center;}
@@ -4382,6 +4383,7 @@ three/build/three.module.js:
     gradeSpeaking: (transcript,level)=>jfetch('/api/speaking/grade',{method:'POST',body:JSON.stringify({transcript,level})}),
     generateStory: (words,level,tts=false)=>jfetch('/api/story/generate',{method:'POST',body:JSON.stringify({words,level,tts})}),
     chatTurn: (message,opts={})=>jfetch('/api/chat/turn',{method:'POST',body:JSON.stringify({message,level:opts.level||'A2',words:opts.words||[],history:opts.history||[],tts:opts.tts?1:0})}),
+    wordImage: (word)=>jfetch('/api/image',{method:'POST',body:JSON.stringify({word})}),
     async tts(text){ if(!BASE) return {offline:true}; try{ const r=await fetch(BASE+'/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})}); const ct=r.headers.get('content-type')||''; if(ct.includes('audio')) return {audio:await r.blob()}; return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
   };
   global.KelimeAPI = API;
@@ -4624,14 +4626,14 @@ function greetWelcome(has){ __greetText=greetText(has); const t=document.getElem
 function replayGreet(){ __greetSpoke=false; if(__greetAudioEl){try{__greetAudioEl.pause();__greetAudioEl.currentTime=0;}catch(e){}} playGreet(); }
 function scrWelcome(){ stopAll(); const has=!!profile;
   app.innerHTML=`<div class="screen welcome2">
-    <div class="wtop">
+    <div class="wtop" style="display:flex;flex-direction:column;align-items:center;width:100%">
       <div class="wlogo">🌿</div><h1 style="margin:4px 0 2px">Kelime</h1><p class="wsub" style="margin:0 0 16px">Günde 5 kelime · İngilizceni sakince büyüt</p>
       <div class="wgreet" style="display:flex;gap:10px;align-items:center;max-width:330px;margin:0 auto 20px;background:#ffffffcc;border:1px solid #ece3da;border-radius:16px;padding:11px 13px;text-align:left;box-shadow:0 4px 14px #0000000d">
         <button id="wgPlay" onclick="replayGreet()" aria-label="Tekrar dinle" style="flex:none;width:40px;height:40px;border-radius:50%;border:none;background:#e8dff0;font-size:18px;cursor:pointer">🔊</button>
         <p id="wgTxt" style="margin:0;font-size:12.5px;line-height:1.4;color:#5a4a42"></p>
       </div>
     </div>
-    <div class="wbot" style="width:100%">
+    <div class="wbot" style="width:100%;display:flex;flex-direction:column;align-items:center">
       <div class="authbtns">
         ${has?`<button class="primary" onclick="scrDashboard()">Devam et · ${profile.name}</button>
                <button class="ghost" onclick="newUser()">Yeni kullanıcı (sıfırdan)</button>
@@ -5110,8 +5112,9 @@ function selDecide(add){ if(roster.length>=5||selIdx>=WORDS.length)return;
 let cardIdx=0, hideMode=false;
 function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
+  try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s238</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s241</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -5124,6 +5127,20 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
 function cardDots(){const cd=document.getElementById('cdots'); if(cd)[...cd.children].forEach((e,k)=>e.className='cdot'+(k<cardIdx?' done':k===cardIdx?' on':''));}
 function has3D(w){ return !!(window.WORD3D && WORD3D[String(w).toLowerCase()]); }
 function dispose3D(){ if(window.__cur3d){ try{window.__cur3d();}catch(e){} window.__cur3d=null; } }
+const IMGDB={ _p:null, open(){ if(this._p)return this._p; this._p=new Promise(function(res){ try{ if(!window.indexedDB)return res(null); const r=indexedDB.open('kelimeImg',1); r.onupgradeneeded=function(e){ try{e.target.result.createObjectStore('img');}catch(x){} }; r.onsuccess=function(e){res(e.target.result);}; r.onerror=function(){res(null);}; }catch(e){res(null);} }); return this._p; },
+ get(k){ return this.open().then(function(db){ if(!db)return null; return new Promise(function(res){ try{ const t=db.transaction('img').objectStore('img').get(k); t.onsuccess=function(){res(t.result||null);}; t.onerror=function(){res(null);}; }catch(e){res(null);} }); }); },
+ set(k,v){ return this.open().then(function(db){ if(!db)return; try{ db.transaction('img','readwrite').objectStore('img').put(v,k); }catch(e){} }); } };
+function setCardImage(card,url,myIdx){ if(cardIdx!==myIdx||!card)return; const iw=card.querySelector('.imgwrap'); if(!iw)return; dispose3D();
+ const old=iw.querySelector('.model3d, svg, .wimg'); if(old)old.remove();
+ const img=document.createElement('img'); img.className='wimg'; img.alt=''; img.src=url; iw.insertBefore(img, iw.firstChild);
+ const tag=iw.querySelector('.aitag'); if(tag)tag.textContent='✨ AI görsel'; }
+function loadWordImage(word,card,myIdx){ try{ const key=String(word).toLowerCase();
+ IMGDB.get(key).then(function(cached){ if(cached){ setCardImage(card,cached,myIdx); return; }
+   if(!(API_BASE&&window.KelimeAPI&&KelimeAPI.wordImage))return;
+   if(cardIdx===myIdx){ const tg=card.querySelector('.aitag'); if(tg)tg.textContent='✨ resim üretiliyor…'; }
+   KelimeAPI.wordImage(word).then(function(r){ if(r&&r.image){ IMGDB.set(key,r.image); setCardImage(card,r.image,myIdx); }
+     else if(cardIdx===myIdx){ const tg=card.querySelector('.aitag'); if(tg)tg.textContent=has3D(word)?'✨ 3B model':'✨ AI görseli'; } }).catch(function(){}); }); }catch(e){} }
+function prefetchImage(word){ if(!word)return; const key=String(word).toLowerCase(); IMGDB.get(key).then(function(c){ if(c)return; if(!(API_BASE&&window.KelimeAPI&&KelimeAPI.wordImage))return; KelimeAPI.wordImage(word).then(function(r){ if(r&&r.image)IMGDB.set(key,r.image); }).catch(function(){}); }); }
 /* 3B motorunu (three.js) yalnızca ilk 3B kart açılınca, tek sefer yükle */
 let __enginePromise=null;
 function loadEngine(){ if(window.THREE&&window.GLTFLoader) return Promise.resolve(true);
@@ -5139,15 +5156,18 @@ function mount3D(container, url){ if(!container||!window.THREE||!window.GLTFLoad
     const w=container.clientWidth||300, h=container.clientHeight||158;
     const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2)); renderer.setSize(w,h);
-    renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.05; renderer.outputColorSpace=THREE.SRGBColorSpace;
+    renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.3; renderer.outputColorSpace=THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
     const scene=new THREE.Scene();
     const pmrem=new THREE.PMREMGenerator(renderer); scene.environment=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
     const cam=new THREE.PerspectiveCamera(35,w/h,0.001,100);
-    scene.add(new THREE.HemisphereLight(0xfff3e8,0xe7cebf,0.6));
-    const key=new THREE.DirectionalLight(0xfff0e0,1.5); key.position.set(2,4,3); scene.add(key);
+    scene.add(new THREE.HemisphereLight(0xffffff,0xe6d8cc,0.75));
+    const key=new THREE.DirectionalLight(0xfff4e6,2.6); key.position.set(2.4,4.4,2.8); scene.add(key);
+    const fill=new THREE.DirectionalLight(0xbfe0ff,1.0); fill.position.set(-3.2,1.6,-1.5); scene.add(fill);
+    const rim=new THREE.DirectionalLight(0xffc7e0,1.25); rim.position.set(-1.2,2.2,-3.2); scene.add(rim);
     let alive=true; window.__cur3d=function(){ alive=false; try{renderer.dispose();}catch(e){} };
     new GLTFLoader().load(url,function(g){ if(!alive)return; const root=g.scene;
+      root.traverse(function(o){ if(o.isMesh&&o.material){ const ms=Array.isArray(o.material)?o.material:[o.material]; ms.forEach(function(m){ if(m.color){ const hsl={}; m.color.getHSL(hsl); m.color.setHSL(hsl.h, Math.min(1,hsl.s*1.5+0.09), Math.min(0.9,hsl.l*1.03)); } if('roughness'in m) m.roughness=Math.max(0.2,(m.roughness==null?0.6:m.roughness)*0.68); if('envMapIntensity'in m) m.envMapIntensity=1.2; m.needsUpdate=true; }); } });
       const box=new THREE.Box3().setFromObject(root); const size=box.getSize(new THREE.Vector3()); const ctr=box.getCenter(new THREE.Vector3()); root.position.sub(ctr);
       const r=Math.max(size.x,size.y,size.z)||1; const dist=r*2.2; cam.position.set(dist*0.15,dist*0.28,dist); cam.lookAt(0,0,0); scene.add(root);
       const controls=new OrbitControls(cam,renderer.domElement); controls.enableDamping=true; controls.dampingFactor=0.08; controls.enablePan=false; controls.autoRotate=true; controls.autoRotateSpeed=2.2; controls.minDistance=r*1.4; controls.maxDistance=r*4;
@@ -5165,12 +5185,12 @@ function cardRender(){
     <button class="save ${savedWords.has(d.w)?'on':''}" onclick="toggleSave('${d.w}')">${savedWords.has(d.w)?'♥':'♡'}</button></div>
     <div class="cbody">
       <div class="crow"><span class="cword">${d.w}</span><button class="spk" onclick="say('${d.w}',false)">${SPKICON}</button></div>
-      <div class="metar"><span class="pos">${d.pos}</span><span class="lvl">Seviye ${d.lvl} · ${LVLNAME[d.lvl]}</span><span class="segs">${segs}</span><span class="freqlbl">${dec}/10</span></div>
       <div class="divider"></div>
       <div class="meanwrap"><div class="mean">${d.mean}</div><div class="reveal" onclick="this.parentElement.parentElement.parentElement.classList.remove('hidden')">👁 anlamı göster</div></div>
       <div class="ex">“${d.ex}”<br><span class="tr">${d.tr}</span></div>
     </div>`;
   stage.appendChild(c); attachSwipe(c,()=>cardGo(1),()=>cardGo(-1));
+  const _imgIdx=cardIdx; loadWordImage(d.w,c,_imgIdx); if(roster[cardIdx+1])prefetchImage(roster[cardIdx+1].w);
   if(is3D){ const holder=c.querySelector('.model3d'); const url=WORD3D[String(d.w).toLowerCase()]; const myIdx=cardIdx;
     loadEngine().then(function(okE){ if(cardIdx!==myIdx||!holder||!holder.isConnected) return;
       if(!okE){ holder.innerHTML=artFor(d.w); return; } // motor yüklenemedi → SVG'ye düş

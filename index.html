@@ -270,7 +270,7 @@
     gradeSpeaking: (transcript,level)=>jfetch('/api/speaking/grade',{method:'POST',body:JSON.stringify({transcript,level})}),
     generateStory: (words,level,tts=false)=>jfetch('/api/story/generate',{method:'POST',body:JSON.stringify({words,level,tts})}),
     chatTurn: (message,opts={})=>jfetch('/api/chat/turn',{method:'POST',body:JSON.stringify({message,level:opts.level||'A2',words:opts.words||[],history:opts.history||[],tts:opts.tts?1:0})}),
-    wordImage: (word)=>jfetch('/api/image',{method:'POST',body:JSON.stringify({word})}),
+    wordImage: (word,prompt)=>jfetch('/api/image',{method:'POST',body:JSON.stringify({word:word,prompt:prompt||undefined})}),
     async tts(text){ if(!BASE) return {offline:true}; try{ const r=await fetch(BASE+'/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})}); const ct=r.headers.get('content-type')||''; if(ct.includes('audio')) return {audio:await r.blob()}; return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
   };
   global.KelimeAPI = API;
@@ -984,7 +984,7 @@ function selRender(){
       <div class="metar"><span class="segs">${segs}</span><span class="freqlbl">sıklık ${dec}/10 · en sık %${dec*10}</span></div>
     </div>`;
   stage.appendChild(c); attachSwipe(c,()=>selDecide(false),()=>selDecide(true));
-  loadCachedImage(d.w,c);
+  loadCachedImage(d,c);
 }
 function selDecide(add){ if(roster.length>=5||selIdx>=WORDS.length)return;
   const stage=document.getElementById('stage'); if(!stage)return; const card=stage.querySelector('.card'); if(!card)return;
@@ -1001,9 +1001,8 @@ let cardIdx=0, hideMode=false;
 function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
-  try{ roster.forEach(function(d){ prefetchImage(d.w); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s244</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s246</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1025,15 +1024,16 @@ function setCardImage(card,url,myIdx){ if(cardIdx!==myIdx||!card)return; const i
  const ld=iw.querySelector('.imgload'); if(ld)ld.remove();
  const tag=iw.querySelector('.aitag'); if(tag)tag.textContent='✨ AI görsel'; }
 function showImgLoading(card,myIdx){ if(cardIdx!==myIdx||!card)return; const iw=card.querySelector('.imgwrap'); if(!iw)return; let o=iw.querySelector('.imgload'); if(!o){ o=document.createElement('div'); iw.appendChild(o);} o.className='imgload'; o.onclick=null; o.innerHTML='<div class="sp"></div><div>Resim hazırlanıyor…</div>'; }
-function showImgError(card,myIdx,word,msg){ if(!card)return; const iw=card.querySelector('.imgwrap'); if(!iw)return; let o=iw.querySelector('.imgload'); if(!o){o=document.createElement('div');iw.appendChild(o);} o.className='imgload err'; o.innerHTML='<div>Görsel gelmedi 😕</div><div style="font-size:11px;opacity:.85;margin-top:2px">'+(msg?String(msg).slice(0,60):'')+'</div><div style="margin-top:6px;font-weight:700">Dokun → tekrar dene</div>'; o.onclick=function(){ o.remove(); loadWordImage(word,card,myIdx); }; }
-function loadWordImage(word,card,myIdx){ try{ const key=String(word).toLowerCase();
+function showImgError(card,myIdx,d,msg){ if(!card)return; const iw=card.querySelector('.imgwrap'); if(!iw)return; let o=iw.querySelector('.imgload'); if(!o){o=document.createElement('div');iw.appendChild(o);} o.className='imgload err'; o.innerHTML='<div>Görsel gelmedi 😕</div><div style="font-size:11px;opacity:.85;margin-top:2px">'+(msg?String(msg).slice(0,60):'')+'</div><div style="margin-top:6px;font-weight:700">Dokun → tekrar dene</div>'; o.onclick=function(){ o.remove(); loadWordImage(d,card,myIdx); }; }
+function imgPrompt(d){ var w=(d&&d.w)||''; var ex=(d&&d.ex)?(' It is used in this sentence: "'+d.ex+'".'):''; var mean=(d&&d.mean)?(' (Turkish meaning: '+d.mean+'.)'):''; var pos=(d&&d.pos)?(' ['+d.pos+']'):''; return 'A friendly, cute 3D rendered illustration for an English vocabulary flashcard. Clearly and simply illustrate the MEANING of the English word "'+w+'"'+pos+'.'+ex+mean+' Show a single clear central subject or a simple scene that represents this meaning (do NOT depict unrelated words that merely look similar). Vibrant saturated colors, soft studio lighting, smooth rounded 3D clay style, clean solid pastel background. No text, no letters, no words.'; }
+function loadWordImage(d,card,myIdx){ var word=(d&&d.w)||d; try{ const key=String(word).toLowerCase();
  IMGDB.get(key).then(function(cached){ if(cached){ setCardImage(card,cached,myIdx); return; }
-   if(!(API_BASE&&window.KelimeAPI&&KelimeAPI.wordImage)){ showImgError(card,myIdx,word,'sunucu bağlı değil'); return; }
+   if(!(API_BASE&&window.KelimeAPI&&KelimeAPI.wordImage)){ showImgError(card,myIdx,d,'sunucu bağlı değil'); return; }
    showImgLoading(card,myIdx);
-   KelimeAPI.wordImage(word).then(function(r){ if(r&&r.image){ IMGDB.set(key,r.image); setCardImage(card,r.image,myIdx); }
-     else { showImgError(card,myIdx,word, (r&&(r.error||r.note))||'boş yanıt'); } }).catch(function(e){ showImgError(card,myIdx,word,String(e&&e.message||e)); }); }); }catch(e){} }
-function prefetchImage(word){ if(!word)return; const key=String(word).toLowerCase(); IMGDB.get(key).then(function(c){ if(c)return; if(!(API_BASE&&window.KelimeAPI&&KelimeAPI.wordImage))return; KelimeAPI.wordImage(word).then(function(r){ if(r&&r.image)IMGDB.set(key,r.image); }).catch(function(){}); }); }
-function loadCachedImage(word,card){ try{ IMGDB.get(String(word).toLowerCase()).then(function(u){ if(!u)return; const iw=card&&card.querySelector('.imgwrap'); if(!iw||!iw.isConnected)return; const old=iw.querySelector('.model3d, svg, .wimg'); if(old)old.remove(); const img=document.createElement('img'); img.className='wimg'; img.alt=''; img.src=u; iw.insertBefore(img,iw.firstChild); const tag=iw.querySelector('.aitag'); if(tag)tag.textContent='✨ AI görsel'; }); }catch(e){} }
+   KelimeAPI.wordImage(word, imgPrompt(d)).then(function(r){ if(r&&r.image){ IMGDB.set(key,r.image); setCardImage(card,r.image,myIdx); }
+     else { showImgError(card,myIdx,d, (r&&(r.error||r.note))||'boş yanıt'); } }).catch(function(e){ showImgError(card,myIdx,d,String(e&&e.message||e)); }); }); }catch(e){} }
+function prefetchImage(d){ var word=(d&&d.w)||d; if(!word)return; const key=String(word).toLowerCase(); IMGDB.get(key).then(function(c){ if(c)return; if(!(API_BASE&&window.KelimeAPI&&KelimeAPI.wordImage))return; KelimeAPI.wordImage(word, imgPrompt(d)).then(function(r){ if(r&&r.image)IMGDB.set(key,r.image); }).catch(function(){}); }); }
+function loadCachedImage(d,card){ var word=(d&&d.w)||d; try{ IMGDB.get(String(word).toLowerCase()).then(function(u){ if(!u)return; const iw=card&&card.querySelector('.imgwrap'); if(!iw||!iw.isConnected)return; const old=iw.querySelector('.model3d, svg, .wimg'); if(old)old.remove(); const img=document.createElement('img'); img.className='wimg'; img.alt=''; img.src=u; iw.insertBefore(img,iw.firstChild); const tag=iw.querySelector('.aitag'); if(tag)tag.textContent='✨ AI görsel'; }); }catch(e){} }
 /* 3B motorunu (three.js) yalnızca ilk 3B kart açılınca, tek sefer yükle */
 let __enginePromise=null;
 function loadEngine(){ if(window.THREE&&window.GLTFLoader) return Promise.resolve(true);
@@ -1082,7 +1082,7 @@ function cardRender(){
       <div class="ex">“${d.ex}”<br><span class="tr">${d.tr}</span></div>
     </div>`;
   stage.appendChild(c); attachSwipe(c,()=>cardGo(1),()=>cardGo(-1));
-  const _imgIdx=cardIdx; loadWordImage(d.w,c,_imgIdx); if(roster[cardIdx+1])prefetchImage(roster[cardIdx+1].w);
+  const _imgIdx=cardIdx; loadWordImage(d,c,_imgIdx); if(roster[cardIdx+1])prefetchImage(roster[cardIdx+1]);
   const cp=document.getElementById('cprev'); if(cp)cp.disabled=cardIdx===0;
   const cn=document.getElementById('cnext'); if(cn)cn.textContent=cardIdx===roster.length-1?'Bitir ✓':'Sonraki →';
   const ch=document.getElementById('chint'); if(ch)ch.textContent=`${cardIdx+1} / ${roster.length}`;

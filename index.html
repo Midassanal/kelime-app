@@ -155,7 +155,7 @@
   .opt{border:1px solid var(--line);background:var(--phone);color:var(--ink);border-radius:14px;padding:14px;font-size:16px;font-weight:600;cursor:pointer;text-align:center;}
   .opt:active{background:var(--rose-bg);}
   .opt.cont{border:1px solid var(--rose-bd);background:var(--rose-bg);color:var(--rose);font-weight:800;text-align:left;}
-  .dash{padding:0;} .dgreet{padding:16px 20px 6px;flex-shrink:0;} .dgreet h1{font-size:23px;margin:0;} .dgreet p{color:var(--muted);font-size:12.5px;margin:3px 0 0;}
+  .dash{padding:0;} .dashscroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:24px;} .dgreet{padding:16px 20px 6px;flex-shrink:0;} .dgreet h1{font-size:23px;margin:0;} .dgreet p{color:var(--muted);font-size:12.5px;margin:3px 0 0;}
   .statgrid{display:flex;gap:10px;padding:8px 18px;flex-shrink:0;} .stat{flex:1;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;text-align:center;} .stat .n{font-size:22px;font-weight:800;color:var(--rose);} .stat .l{font-size:11px;color:var(--muted);margin-top:2px;}
   .tbanner{margin:8px 18px;border-radius:14px;padding:11px 14px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0;}
   .tbanner.ok{background:var(--sage-bg);border:1px solid var(--sage-bd);color:#3f6d55;}
@@ -4975,7 +4975,7 @@ function scrDashboard(){ stopAll(); if(!profile)return scrWelcome();
   else if(locked) banner=`<div class="tbanner lock"><span>Deneme süren doldu</span><button onclick="scrPaywall()">Üyelikle devam</button></div>`;
   else banner=`<div class="tbanner warn"><span>Ücretsiz deneme · ${Math.min(dn,TRIAL_DAYS)}/${TRIAL_DAYS}. gün</span><button onclick="scrPaywall()">Üyelik</button></div>`;
   const last=profile.lastTopicId?TOPICS.find(t=>t.id===profile.lastTopicId):null;
-  app.innerHTML=`<div class="screen dash">
+  app.innerHTML=`<div class="screen dash"><div class="dashscroll">
     <div class="dgreet"><h1>Merhaba ${profile.name} 🌿</h1><p>Katılım: ${fmtDate(profile.joinDate)} · ${dn}. günün · Seviye ${profile.level||'—'}</p></div>
     ${coachHtml()}
     <div class="statgrid">
@@ -4993,7 +4993,7 @@ function scrDashboard(){ stopAll(); if(!profile)return scrWelcome();
       </div>
       <div class="devrow"><button onclick="devDay()">🔧 +1 gün (test)</button><button onclick="devReset()">🔧 üyeliği sıfırla</button></div>
     </div>
-  </div>`;
+  </div></div>`;
 }
 function continueTopic(){ const t=TOPICS.find(x=>x.id===profile.lastTopicId)||TOPICS[0]; gateStart(()=>startTopic(t)); }
 function devDay(){ profile.devOffset=(profile.devOffset||0)+1; saveProfile(); scrDashboard(); }
@@ -5110,7 +5110,7 @@ let cardIdx=0, hideMode=false;
 function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s235</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s236</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>

@@ -1004,7 +1004,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s247</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s248</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1013,6 +1013,8 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   </div>`;
   const cd=document.getElementById('cdots'); roster.forEach(()=>{const e=document.createElement('div');e.className='cdot';cd.appendChild(e);});
   cardRender();
+  /* Tüm kadroyu (5 kelime) baştan arka planda hazırla → hiçbir kartta bekleme olmasın. */
+  roster.forEach(function(d){ prefetchImage(d); });
 }
 function cardDots(){const cd=document.getElementById('cdots'); if(cd)[...cd.children].forEach((e,k)=>e.className='cdot'+(k<cardIdx?' done':k===cardIdx?' on':''));}
 function has3D(w){ return !!(window.WORD3D && WORD3D[String(w).toLowerCase()]); }
@@ -1046,7 +1048,7 @@ function loadWordImage(d,card,myIdx){ var word=(d&&d.w)||d; if(!word)return; try
    imgRequest(d).then(function(res){ if(res&&res.image){ setCardImage(card,res.image,myIdx); }
      else { showImgError(card,myIdx,d,(res&&res.error)||'boş yanıt'); } }); }); }catch(e){} }
 /* Ön-yükleme kuyruğu: en çok 2 istek aynı anda uçar (rate-limit'i zorlamadan sıradaki kartları hazırlar). */
-var _pfQ=[], _pfN=0, _pfMax=2, _pfSeen={};
+var _pfQ=[], _pfN=0, _pfMax=3, _pfSeen={};
 function prefetchImage(d){ var word=(d&&d.w)||d; if(!word)return; var key=String(word).toLowerCase(); if(_pfSeen[key])return; _pfSeen[key]=1; _pfQ.push(d); _pfPump(); }
 function _pfPump(){ while(_pfN<_pfMax && _pfQ.length){ var d=_pfQ.shift(); _pfN++; imgRequest(d).catch(function(){}).then(function(){ _pfN--; _pfPump(); }); } }
 function loadCachedImage(d,card){ var word=(d&&d.w)||d; try{ IMGDB.get(String(word).toLowerCase()).then(function(u){ if(!u)return; const iw=card&&card.querySelector('.imgwrap'); if(!iw||!iw.isConnected)return; const old=iw.querySelector('.model3d, svg, .wimg'); if(old)old.remove(); const img=document.createElement('img'); img.className='wimg'; img.alt=''; img.src=u; iw.insertBefore(img,iw.firstChild); const tag=iw.querySelector('.aitag'); if(tag)tag.textContent='✨ AI görsel'; }); }catch(e){} }

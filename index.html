@@ -1004,7 +1004,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s248</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s249</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1030,9 +1030,12 @@ function setCardImage(card,url,myIdx){ if(cardIdx!==myIdx||!card)return; const i
 function showImgLoading(card,myIdx){ if(cardIdx!==myIdx||!card)return; const iw=card.querySelector('.imgwrap'); if(!iw)return; let o=iw.querySelector('.imgload'); if(!o){ o=document.createElement('div'); iw.appendChild(o);} o.className='imgload'; o.onclick=null; o.innerHTML='<div class="sp"></div><div>Resim hazırlanıyor…</div>'; }
 function showImgError(card,myIdx,d,msg){ if(!card)return; const iw=card.querySelector('.imgwrap'); if(!iw)return; let o=iw.querySelector('.imgload'); if(!o){o=document.createElement('div');iw.appendChild(o);} o.className='imgload err'; o.innerHTML='<div>Görsel gelmedi 😕</div><div style="font-size:11px;opacity:.85;margin-top:2px">'+(msg?String(msg).slice(0,60):'')+'</div><div style="margin-top:6px;font-weight:700">Dokun → tekrar dene</div>'; o.onclick=function(){ o.remove(); loadWordImage(d,card,myIdx); }; }
 function imgPrompt(d){ var w=(d&&d.w)||''; var ex=(d&&d.ex)?(' It is used in this sentence: "'+d.ex+'".'):''; var mean=(d&&d.mean)?(' (Turkish meaning: '+d.mean+'.)'):''; var pos=(d&&d.pos)?(' ['+d.pos+']'):''; return 'A friendly, cute 3D rendered illustration for an English vocabulary flashcard. Clearly and simply illustrate the MEANING of the English word "'+w+'"'+pos+'.'+ex+mean+' Show a single clear central subject or a simple scene that represents this meaning (do NOT depict unrelated words that merely look similar). Vibrant saturated colors, soft studio lighting, smooth rounded 3D clay style, clean solid pastel background. No text, no letters, no words.'; }
+/* Önbellek anahtarı sürümlü: prompt mantığı değişince (v2) eski/yanlış görseller yok sayılır, yeniden üretilir. */
+var IMGVER='v2';
+function imgKey(w){ return String(w).toLowerCase()+'|'+IMGVER; }
 /* Tek paylaşımlı istek hattı: hem açık kart hem ön-yükleme aynı isteği paylaşır (çift üretim yok). */
 var _inflight={};
-function imgRequest(d){ var word=(d&&d.w)||d; var key=String(word).toLowerCase();
+function imgRequest(d){ var word=(d&&d.w)||d; var key=imgKey(word);
   return IMGDB.get(key).then(function(c){ if(c) return {image:c,cached:true};
     if(_inflight[key]) return _inflight[key];
     if(!(API_BASE&&window.KelimeAPI&&KelimeAPI.wordImage)) return {error:'sunucu bağlı değil'};
@@ -1041,7 +1044,7 @@ function imgRequest(d){ var word=(d&&d.w)||d; var key=String(word).toLowerCase()
         return {error:(r&&(r.error||r.note))||'boş yanıt'}; })
       .catch(function(e){ delete _inflight[key]; return {error:String(e&&e.message||e)}; });
     _inflight[key]=p; return p; }); }
-function loadWordImage(d,card,myIdx){ var word=(d&&d.w)||d; if(!word)return; try{ var key=String(word).toLowerCase();
+function loadWordImage(d,card,myIdx){ var word=(d&&d.w)||d; if(!word)return; try{ var key=imgKey(word);
  IMGDB.get(key).then(function(cached){ if(cached){ setCardImage(card,cached,myIdx); return; }
    if(!(API_BASE&&window.KelimeAPI&&KelimeAPI.wordImage)){ showImgError(card,myIdx,d,'sunucu bağlı değil'); return; }
    showImgLoading(card,myIdx);
@@ -1049,9 +1052,9 @@ function loadWordImage(d,card,myIdx){ var word=(d&&d.w)||d; if(!word)return; try
      else { showImgError(card,myIdx,d,(res&&res.error)||'boş yanıt'); } }); }); }catch(e){} }
 /* Ön-yükleme kuyruğu: en çok 2 istek aynı anda uçar (rate-limit'i zorlamadan sıradaki kartları hazırlar). */
 var _pfQ=[], _pfN=0, _pfMax=3, _pfSeen={};
-function prefetchImage(d){ var word=(d&&d.w)||d; if(!word)return; var key=String(word).toLowerCase(); if(_pfSeen[key])return; _pfSeen[key]=1; _pfQ.push(d); _pfPump(); }
+function prefetchImage(d){ var word=(d&&d.w)||d; if(!word)return; var key=imgKey(word); if(_pfSeen[key])return; _pfSeen[key]=1; _pfQ.push(d); _pfPump(); }
 function _pfPump(){ while(_pfN<_pfMax && _pfQ.length){ var d=_pfQ.shift(); _pfN++; imgRequest(d).catch(function(){}).then(function(){ _pfN--; _pfPump(); }); } }
-function loadCachedImage(d,card){ var word=(d&&d.w)||d; try{ IMGDB.get(String(word).toLowerCase()).then(function(u){ if(!u)return; const iw=card&&card.querySelector('.imgwrap'); if(!iw||!iw.isConnected)return; const old=iw.querySelector('.model3d, svg, .wimg'); if(old)old.remove(); const img=document.createElement('img'); img.className='wimg'; img.alt=''; img.src=u; iw.insertBefore(img,iw.firstChild); const tag=iw.querySelector('.aitag'); if(tag)tag.textContent='✨ AI görsel'; }); }catch(e){} }
+function loadCachedImage(d,card){ var word=(d&&d.w)||d; try{ IMGDB.get(imgKey(word)).then(function(u){ if(!u)return; const iw=card&&card.querySelector('.imgwrap'); if(!iw||!iw.isConnected)return; const old=iw.querySelector('.model3d, svg, .wimg'); if(old)old.remove(); const img=document.createElement('img'); img.className='wimg'; img.alt=''; img.src=u; iw.insertBefore(img,iw.firstChild); const tag=iw.querySelector('.aitag'); if(tag)tag.textContent='✨ AI görsel'; }); }catch(e){} }
 /* 3B motorunu (three.js) yalnızca ilk 3B kart açılınca, tek sefer yükle */
 let __enginePromise=null;
 function loadEngine(){ if(window.THREE&&window.GLTFLoader) return Promise.resolve(true);

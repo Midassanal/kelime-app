@@ -55,16 +55,16 @@
   .subnote{font-size:11px;color:var(--muted);text-align:center;padding:4px 20px 12px;}
 
   /* progress pips */
-  .pips{display:flex;gap:6px;flex:1;} .pip{flex:1;height:7px;border-radius:6px;background:#e7d2c8;transition:.25s;}
-  .pip.on{background:var(--rose);transform:scaleY(1.15);} .pip.done{background:var(--sage);}
+  .pips{display:flex;gap:5px;flex:1;} .pip{flex:1;height:3px;border-radius:3px;background:#e7d2c8;transition:.25s;}
+  .pip.on{background:var(--rose);} .pip.done{background:var(--sage);}
   .prow{display:flex;align-items:center;gap:10px;padding:2px 20px 2px;flex-shrink:0;}
   .count{font-size:13px;color:var(--muted);white-space:nowrap;} .count b{color:var(--rose);font-size:15px;}
   .seen{font-size:11px;color:var(--muted);padding:2px 20px;flex-shrink:0;}
 
   .stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;padding:8px;min-height:0;}
-  .card{position:absolute;width:min(320px,86vw);background:var(--card);border:1px solid var(--line);
+  .card{position:absolute;top:6px;bottom:6px;left:0;right:0;margin:0 auto;width:min(340px,88vw);background:var(--card);border:1px solid var(--line);
     border-radius:22px;box-shadow:0 12px 28px rgba(150,100,90,.16);overflow:hidden;display:flex;flex-direction:column;touch-action:pan-y;user-select:none;}
-  .imgwrap{position:relative;height:380px;perspective:900px;overflow:hidden;} .imgwrap svg{display:block;width:100%;height:100%;}
+  .imgwrap{position:relative;flex:1 1 auto;min-height:150px;perspective:900px;overflow:hidden;} .imgwrap svg{display:block;width:100%;height:100%;}
   .imgwrap .model3d{position:absolute;inset:0;width:100%;height:100%;background:radial-gradient(circle at 50% 32%,#ffffff 0%,#eef4fb 55%,#dfeafb 100%);}
   .imgwrap .wimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;transform-origin:50% 55%;animation:wfloat 5s ease-in-out infinite;will-change:transform;}
   @keyframes wfloat{0%,100%{transform:scale(1.07) translateY(0) rotateY(-6deg)}50%{transform:scale(1.07) translateY(-2%) rotateY(6deg)}}
@@ -1040,7 +1040,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s255</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s256</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>

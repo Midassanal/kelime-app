@@ -283,7 +283,7 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
     generateStory: (words,level,tts=false)=>jfetch('/api/story/generate',{method:'POST',body:JSON.stringify({words,level,tts})}),
     chatTurn: (message,opts={})=>jfetch('/api/chat/turn',{method:'POST',body:JSON.stringify({message,level:opts.level||'A2',words:opts.words||[],history:opts.history||[],tts:opts.tts?1:0})}),
     wordImage: (word,prompt)=>jfetch('/api/image',{method:'POST',body:JSON.stringify({word:word,prompt:prompt||undefined})}),
-    async tts(text){ if(!BASE) return {offline:true}; try{ const r=await fetch(BASE+'/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})}); const ct=r.headers.get('content-type')||''; if(ct.includes('audio')) return {audio:await r.blob()}; return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
+    async tts(text,voice){ if(!BASE) return {offline:true}; try{ const r=await fetch(BASE+'/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,voiceId:voice||undefined})}); const ct=r.headers.get('content-type')||''; if(ct.includes('audio')) return {audio:await r.blob()}; return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
   };
   global.KelimeAPI = API;
 })(window);
@@ -514,30 +514,35 @@ function srsAnswer(w,correct){ if(!profile)return; var m=srsMap(); var k=String(
 /* ---- KARŞILAMA ---- */
 /* ==== Sesli karşılama (Aiko) ==== */
 let __ttsVoice=null,__greetText='',__greetSpoke=false,__greetPrimed=false;
-function pickTRVoice(){ try{ const vs=(window.speechSynthesis&&speechSynthesis.getVoices())||[]; const tr=vs.filter(x=>/^tr(-|_|$)/i.test(x.lang||'')); if(!tr.length)return null;
-  const score=function(v){ const n=(v.name||'').toLowerCase(); let s=0; if(/enhanced|premium|natural|neural|gelişmiş/.test(n))s+=6; if(/yelda|filiz|seda|elif|aylin|kad|female/.test(n))s+=4; if(/google/.test(n))s+=3; if(v.localService)s+=1; return s; };
+/* Seçili avatarın OpenAI sesi (kadın/erkek + her biri farklı) ve cinsiyeti */
+function avatarVoice(){ var id=curAvatarId(); var m={f1:'coral',f2:'shimmer',f3:'nova',m1:'onyx',m2:'ash',m3:'echo'}; return m[id]||'nova'; }
+function avatarGender(){ var id=curAvatarId(); return (id&&String(id).charAt(0)==='m')?'m':'f'; }
+function pickTRVoice(male){ try{ const vs=(window.speechSynthesis&&speechSynthesis.getVoices())||[]; const tr=vs.filter(x=>/^tr(-|_|$)/i.test(x.lang||'')); if(!tr.length)return null;
+  const score=function(v){ const n=(v.name||'').toLowerCase(); let s=0; if(/enhanced|premium|natural|neural|gelişmiş/.test(n))s+=6; if(/google/.test(n))s+=3; if(v.localService)s+=1;
+    if(male){ if(/erkek|male|\bman\b|mehmet|ahmet|emre|barış|baris|onur|volkan|tolga/.test(n))s+=4; }
+    else { if(/yelda|filiz|seda|elif|aylin|kad|female|woman/.test(n))s+=4; } return s; };
   return tr.slice().sort(function(a,b){return score(b)-score(a);})[0]; }catch(e){return null;} }
 (function(){ if(!('speechSynthesis'in window))return; try{__ttsVoice=pickTRVoice();}catch(e){} try{speechSynthesis.onvoiceschanged=function(){__ttsVoice=pickTRVoice();};}catch(e){} })();
 function speakGreet(){ try{ if(!('speechSynthesis'in window)||!__greetText)return; speechSynthesis.cancel();
-  const v=__ttsVoice||pickTRVoice(); const parts=(__greetText.match(/[^.!?]+[.!?]*/g)||[__greetText]).map(function(x){return x.trim();}).filter(Boolean);
-  parts.forEach(function(p,i){ const u=new SpeechSynthesisUtterance(p); if(v){u.voice=v;u.lang=v.lang;}else u.lang='tr-TR'; u.rate=1.04;u.pitch=1.16;u.volume=1; if(i===0)u.onstart=function(){__greetSpoke=true;}; speechSynthesis.speak(u); }); }catch(e){} }
+  var male=avatarGender()==='m'; const v=pickTRVoice(male)||__ttsVoice; const parts=(__greetText.match(/[^.!?]+[.!?]*/g)||[__greetText]).map(function(x){return x.trim();}).filter(Boolean);
+  parts.forEach(function(p,i){ const u=new SpeechSynthesisUtterance(p); if(v){u.voice=v;u.lang=v.lang;}else u.lang='tr-TR'; u.rate=1.02;u.pitch=male?0.86:1.16;u.volume=1; if(i===0)u.onstart=function(){__greetSpoke=true;}; speechSynthesis.speak(u); }); }catch(e){} }
 function greetText(has){ if(has&&profile&&profile.name) return 'Merhaba '+profile.name+'! Bugün de çalışmaya hazır mısın? Güzel ve eğlenceli bir derse başlayalım mı?';
   return 'Merhaba, hoş geldin. Yeni ve eğlenceli bir yola hazır mısın? Hem öğreneceğiz, hem konuşacağız, hem de eğleneceğiz. Hadi, şimdi önce testi yap ve sonra beraber planımızı yapalım.'; }
 /* Gerçek Aiko sesi: backend (OpenAI TTS) → mp3; önbelleğe alınır, olmazsa tarayıcı sesi */
 let __greetAudioEl=null;
 function blobToDataURL(b){ return new Promise(function(res){ try{ const fr=new FileReader(); fr.onload=function(){res(fr.result);}; fr.onerror=function(){res(null);}; fr.readAsDataURL(b);}catch(e){res(null);} }); }
-function ttsCacheKey(t){ let h=0; for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))>>>0; return 'kelimeApp.tts.'+h; }
-function getCachedTTS(t){ try{ return localStorage.getItem(ttsCacheKey(t)); }catch(e){ return null; } }
-async function fetchGreetTTS(text){
-  const cached=getCachedTTS(text); if(cached) return cached;
+function ttsCacheKey(t,v){ var s=(t||'')+'|'+(v||''); let h=0; for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0; return 'kelimeApp.tts.'+h; }
+function getCachedTTS(t,v){ try{ return localStorage.getItem(ttsCacheKey(t,v)); }catch(e){ return null; } }
+async function fetchGreetTTS(text){ var voice=avatarVoice();
+  const cached=getCachedTTS(text,voice); if(cached) return cached;
   if(!(window.KelimeAPI&&API_BASE)) return null;
-  try{ const r=await KelimeAPI.tts(text);
-    if(r&&r.audio){ const durl=await blobToDataURL(r.audio); if(durl){ try{localStorage.setItem(ttsCacheKey(text),durl);}catch(e){} return durl; } }
+  try{ const r=await KelimeAPI.tts(text,voice);
+    if(r&&r.audio){ const durl=await blobToDataURL(r.audio); if(durl){ try{localStorage.setItem(ttsCacheKey(text,voice),durl);}catch(e){} return durl; } }
   }catch(e){}
   return null;
 }
 function playAudioUrl(url){ try{ if(__greetAudioEl){try{__greetAudioEl.pause();}catch(e){}} __greetAudioEl=new Audio(url); const p=__greetAudioEl.play(); if(p&&p.then)p.then(function(){__greetSpoke=true;}).catch(function(){ speakGreet(); }); return true; }catch(e){ speakGreet(); return false; } }
-function playGreet(){ const cached=getCachedTTS(__greetText); if(cached){ playAudioUrl(cached); return; }
+function playGreet(){ const cached=getCachedTTS(__greetText,avatarVoice()); if(cached){ playAudioUrl(cached); return; }
   fetchGreetTTS(__greetText).then(function(url){ if(url) playAudioUrl(url); else speakGreet(); }); }
 function greetWelcome(has){ __greetText=greetText(has); const t=document.getElementById('wgTxt'); if(t)t.textContent=__greetText; __greetSpoke=false;
   fetchGreetTTS(__greetText); /* arka planda hazırla (önbellek), ilk dokunuşta anında çalsın */
@@ -1059,7 +1064,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s259</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s260</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>

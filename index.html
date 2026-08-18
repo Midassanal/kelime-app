@@ -475,8 +475,30 @@ function fmtDate(iso){ try{return new Date(iso).toLocaleDateString('tr-TR',{day:
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function recordKnown(w){ if(!profile||!currentTopic)return; const t=currentTopic.id; profile.known=profile.known||{}; profile.known[t]=profile.known[t]||[]; if(profile.known[t].indexOf(w)<0){ profile.known[t].push(w); saveProfile(); } }
 function recordProgress(){ if(!profile||!currentTopic)return; const t=currentTopic.id; profile.studied=profile.studied||{}; profile.studied[t]=profile.studied[t]||[];
-  roster.forEach(d=>{if(!profile.studied[t].includes(d.w))profile.studied[t].push(d.w);}); profile.lastTopicId=t;
+  roster.forEach(d=>{if(!profile.studied[t].includes(d.w))profile.studied[t].push(d.w); enterSRS(d.w,t,d.lvl);}); profile.lastTopicId=t;
   profile.daysActive=profile.daysActive||[]; const ds=todayStr(); if(!profile.daysActive.includes(ds))profile.daysActive.push(ds); saveProfile(); }
+
+/* ================= ARALIKLI TEKRAR (Leitner) ================= */
+/* Her kelimenin bir "kutusu" (1-5) ve tekrar günü var. Doğru → kutu yükselir, aralık uzar. Yanlış → kutu 1. */
+const SRS_INTERVALS={1:1,2:2,3:4,4:7,5:15};
+const SRS_CAP=20; // bir tekrar oturumunda en çok kelime (boğulmamak için)
+let WORDINDEX=null;
+function wordIndex(){ if(WORDINDEX)return WORDINDEX; WORDINDEX={}; try{ Object.keys(VOCAB).forEach(function(t){ (VOCAB[t]||[]).forEach(function(d){ var k=String(d.w).toLowerCase(); if(!WORDINDEX[k])WORDINDEX[k]=Object.assign({topic:t},d); }); }); }catch(e){} return WORDINDEX; }
+function wordData(w){ return wordIndex()[String(w).toLowerCase()]||{w:w,pos:'',mean:'',ex:'',tr:''}; }
+function srsMap(){ if(!profile)return {}; profile.srs=profile.srs||{}; return profile.srs; }
+function enterSRS(w,topic,lvl){ if(!profile)return; var m=srsMap(); var k=String(w).toLowerCase(); if(m[k])return; m[k]={box:1,due:dayNumber()+1,topic:topic||'',lvl:lvl||''}; }
+/* SRS öncesi çalışılmış kelimeleri sisteme bir kez aktar (bugünden itibaren tekrara girsinler). */
+function seedSRS(){ if(!profile||profile.srsSeeded)return; var m=srsMap();
+  if(profile.studied){ Object.keys(profile.studied).forEach(function(t){ (profile.studied[t]||[]).forEach(function(w){ var k=String(w).toLowerCase(); if(!m[k])m[k]={box:1,due:dayNumber(),topic:t,lvl:''}; }); }); }
+  profile.srsSeeded=true; saveProfile(); }
+function dueList(){ if(!profile)return []; var m=srsMap(); var dn=dayNumber(); var out=[];
+  Object.keys(m).forEach(function(k){ var e=m[k]; if(!e.done && (e.due||0)<=dn) out.push(Object.assign({_box:e.box||1},wordData(k))); });
+  out.sort(function(a,b){ return (a._box-b._box); }); return out; }
+function dueCount(){ return dueList().length; }
+function srsAnswer(w,correct){ if(!profile)return; var m=srsMap(); var k=String(w).toLowerCase(); var e=m[k]||{box:1};
+  if(correct){ e.box=Math.min(5,(e.box||1)+1); e.due=dayNumber()+SRS_INTERVALS[e.box]; }
+  else { e.box=1; e.due=dayNumber()+1; }
+  m[k]=e; saveProfile(); }
 
 /* ---- KARŞILAMA ---- */
 /* ==== Sesli karşılama (Aiko) ==== */
@@ -877,6 +899,7 @@ function scrDashboard(){ stopAll(); if(!profile)return scrWelcome();
     ${banner}
     ${roadCardHtml()}
     <div class="content" style="padding-top:2px">
+      ${srsCardHtml()}
       ${tids.length?`<div class="studied"><h4>Çalıştığın konular</h4>${tids.map(k=>{const t=TOPICS.find(x=>x.id===k);if(!t)return '';return `<div class="srow"><span class="em">${t.emoji}</span><span class="nm">${t.name}</span><span class="ct">${profile.studied[k].length} kelime</span></div>`;}).join('')}</div>`:`<div class="studied"><h4>Çalıştığın konular</h4><div style="color:var(--muted);font-size:13px">Henüz konu çalışmadın — hadi başlayalım!</div></div>`}
       <div class="dlearn"><h4>Bugün çalışalım</h4>
         ${last?`<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Kaldığın yer: ${last.emoji} ${last.name}</div>`:''}
@@ -1008,7 +1031,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s253</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s254</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1353,6 +1376,54 @@ function scrDone(){ stopAll(); recordProgress();
     <div class="foothint">Tavsiye: yarın 5 yeni kelime</div></div>
   </div>`;
 }
+
+/* ================= TEKRAR EKRANI (Leitner) ================= */
+let revList=[], revIdx=0, revRight=0;
+function scrReview(){ stopAll(); if(!profile)return scrWelcome(); seedSRS();
+  revList=dueList().slice(0,SRS_CAP); revIdx=0; revRight=0;
+  if(revList.length===0) return scrReviewEmpty();
+  app.innerHTML=`<div class="screen">
+    <div class="hdr"><button class="back" onclick="scrDashboard()">‹ Panel</button><span class="phase">🔁 Tekrar</span></div>
+    <div class="dots" id="rdots"></div>
+    <div class="stage" id="stage"></div>
+    <div class="actions"><button class="btn know" onclick="revAnswer(false)">Hatırlamadım<small>tekrar</small></button><button class="btn learn" onclick="revAnswer(true)">Biliyorum<small>✓</small></button></div>
+    <div class="foothint" id="rhint"></div>
+  </div>`;
+  const cd=document.getElementById('rdots'); revList.forEach(()=>{const e=document.createElement('div');e.className='cdot';cd.appendChild(e);});
+  revRender();
+}
+function revRender(){ const stage=document.getElementById('stage'); if(!stage)return; stage.innerHTML='';
+  const d=revList[revIdx]; const c=document.createElement('div'); c.className='card hidden';
+  c.innerHTML=`<div class="imgwrap">${artFor(d.w)}<span class="aitag">🔁 Tekrar</span></div>
+    <div class="cbody">
+      <div class="crow"><span class="cword">${d.w}</span><button class="spk" onclick="say('${d.w}',false)">${SPKICON}</button></div>
+      <div class="divider"></div>
+      <div class="meanwrap"><div class="mean">${d.mean||''}</div><div class="reveal" onclick="revReveal(this)">👁 anlamı göster</div></div>
+      <div class="ex">${d.ex?('“'+d.ex+'”'):''}<br><span class="tr">${d.tr||''}</span></div>
+    </div>`;
+  stage.appendChild(c); loadSelImage(d,c);
+  const rd=document.getElementById('rdots'); if(rd)[...rd.children].forEach((e,k)=>e.className='cdot'+(k<revIdx?' done':k===revIdx?' on':''));
+  const rh=document.getElementById('rhint'); if(rh)rh.textContent=`${revIdx+1} / ${revList.length}`;
+  if(revList[revIdx+1])prefetchImage(revList[revIdx+1]);
+}
+function revReveal(el){ const c=el&&el.closest('.card'); if(c)c.classList.remove('hidden'); }
+function revAnswer(correct){ const d=revList[revIdx]; if(!d)return; srsAnswer(d.w,correct); if(correct)revRight++;
+  revIdx++; if(revIdx>=revList.length) return scrReviewDone(); revRender(); }
+function scrReviewDone(){ stopAll(); const remain=dueCount();
+  app.innerHTML=`<div class="screen done"><div class="big">🎉</div><h2>Tekrar bitti</h2>
+    <p>${revList.length} kelimeyi gözden geçirdin · <b>${revRight}</b> doğru. ${remain>0?('Bugün için '+remain+' kelime daha var.'):'Bugünlük tekrarların tamam! 🌿'}</p>
+    <div style="margin-top:auto;width:100%">${remain>0?`<button class="primary" onclick="scrReview()">Devam et (${remain}) →</button><button class="ghost" style="margin-top:8px" onclick="scrDashboard()">Panele dön</button>`:`<button class="primary" onclick="scrDashboard()">Panele dön →</button>`}</div>
+  </div>`;
+}
+function scrReviewEmpty(){ stopAll();
+  app.innerHTML=`<div class="screen done"><div class="big">🌿</div><h2>Tekrar yok</h2>
+    <p>Şu an tekrar zamanı gelen kelime yok. Yeni kelimeler çalıştıkça burada birikip doğru zamanda karşına çıkacak.</p>
+    <div style="margin-top:auto;width:100%"><button class="primary" onclick="scrDashboard()">Panele dön →</button></div>
+  </div>`;
+}
+function srsCardHtml(){ if(!profile)return ''; seedSRS(); var n=dueCount();
+  if(n<=0) return `<div class="dlearn" style="margin-bottom:2px"><h4>🔁 Tekrar</h4><div style="color:var(--muted);font-size:13px">Bugün tekrar zamanı gelen kelime yok.</div></div>`;
+  return `<div class="dlearn revcard" style="margin-bottom:2px"><h4>🔁 Tekrar zamanı</h4><div style="color:var(--muted);font-size:13px;margin-bottom:10px">${n} kelimenin tekrar vakti geldi. Hızlıca gözden geçir, kalıcı olsun.</div><button class="primary" style="width:100%" onclick="scrReview()">🔁 Tekrar et (${n}) →</button></div>`; }
 
 /* ================= AIKO İLE KONUŞMA ================= */
 const AIKO_SVG=`<svg viewBox='0 0 100 100'><path d='M18 46 Q20 14 50 12 Q80 14 82 46 L82 60 Q82 40 50 40 Q18 40 18 60 Z' fill='#6b4a52'/><circle cx='50' cy='54' r='28' fill='#fce4dd'/><path d='M22 40 Q50 34 78 40 L78 30 Q50 20 22 30 Z' fill='#7d5560'/><circle cx='40' cy='54' r='4.5' fill='#4c403b'/><circle cx='60' cy='54' r='4.5' fill='#4c403b'/><circle cx='41.5' cy='52.5' r='1.4' fill='#fff'/><circle cx='61.5' cy='52.5' r='1.4' fill='#fff'/><circle cx='33' cy='62' r='4' fill='#f3b3ac' opacity='.7'/><circle cx='67' cy='62' r='4' fill='#f3b3ac' opacity='.7'/><path d='M43 64 Q50 70 57 64' fill='none' stroke='#c67' stroke-width='2.4' stroke-linecap='round'/></svg>`;
@@ -1701,7 +1772,7 @@ function attachSwipe(card,onLeft,onRight){
 }
 
 Object.assign(window,{scrTopics,pickTopic,startSelect,selDecide,toggleHide,toggleSave,cardGo,setMode,toggleNormal,toggleElif,openSheet,closeSheet,sheetSave,say,scrProduce,p1skip,p1next,bankTap,produceS1,produceS2,produceS3,scrDone,
-  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords});
+  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal});
 boot();
 </script>
 </body>

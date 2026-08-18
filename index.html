@@ -1040,7 +1040,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s256</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s257</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1724,12 +1724,37 @@ function scrImportResult(words, note){ stopAll(); IMPORT_WORDS=words;
     <div class="content">
       ${note?'<div class="subnote" style="margin:0 0 10px">'+esc(note)+'</div>':''}
       <div class="topics">${words.map(function(d){return '<div class="tcard"><div class="em" style="font-size:13px;color:var(--muted);min-width:30px;text-align:center">'+(d.lvl||'📄')+'</div><div style="flex:1"><div class="tt">'+esc(d.w)+'</div><div class="td">'+esc(d.mean||'—')+'</div></div></div>';}).join('')}</div>
+      <div id="prepBox" class="dlearn" style="margin-top:14px">
+        <div style="font-size:13px;color:#5a4a42;margin-bottom:9px">Bu kelimeler için <b>görsel hazırlayayım mı?</b> Öğrenirken kartlarda anında gelir. (Biraz sürebilir, arka planda hazırlarım.)</div>
+        <div style="display:flex;gap:8px">
+          <button class="primary" style="flex:1" id="prepBtn" onclick="prepImportImages()">🎨 Evet, hazırla</button>
+          <button class="ghost" style="flex:1" onclick="skipPrep()">Gerek yok</button>
+        </div>
+        <div id="prepBar" style="font-size:12px;color:var(--muted);margin-top:9px"></div>
+      </div>
       <button class="primary" style="width:100%;margin-top:14px" onclick="learnImported()">🎴 Bu kelimeleri öğren →</button>
       <button class="opt" style="width:100%;margin-top:10px;border-color:#e3b3a6" onclick="talkWithImported()">🗣️ Bunları kullanarak konuşalım</button>
       <button class="opt" style="width:100%;margin-top:10px;border-color:#cbb3d4" onclick="writeWithImported()">✍️ Bunları kullanarak yazalım</button>
     </div>
   </div>`;
 }
+function skipPrep(){ var b=document.getElementById('prepBox'); if(b)b.style.display='none'; }
+/* Bir kelimenin görselini garantile: cache varsa geç, baked (statik) varsa geç, yoksa üret+önbelleğe al. */
+function ensureImage(d){ return new Promise(function(res){ var word=(d&&d.w)||d; if(!word){res('fail');return;} var key=imgKey(word);
+  IMGDB.get(key).then(function(c){ if(c){res('cache');return;}
+    var surl=staticImgURL(word); var probe=new Image();
+    probe.onload=function(){ res('static'); };
+    probe.onerror=function(){ imgRequest(d).then(function(r){ res(r&&r.image?'made':'fail'); }); };
+    probe.src=surl; }); }); }
+/* İçe aktarılan kelimeler için görselleri önden hazırla (aynı anda 2, rate-limit dostu). */
+function prepImportImages(){ var words=(IMPORT_WORDS||[]).slice(); if(!words.length)return;
+  var btn=document.getElementById('prepBtn'); if(btn){btn.disabled=true;btn.textContent='Hazırlanıyor…';}
+  var bar=document.getElementById('prepBar'); var total=words.length, done=0, i=0, active=0, made=0;
+  function upd(){ if(bar)bar.textContent='Görseller hazırlanıyor… '+done+'/'+total; }
+  upd();
+  function pump(){ while(active<2 && i<words.length){ var d=words[i++]; active++;
+      ensureImage(d).then(function(r){ if(r==='made')made++; done++; active--; upd(); if(done>=total){ if(bar)bar.textContent='✓ Görseller hazır'+(made?(' ('+made+' yeni üretildi)'):''); if(btn){btn.textContent='✓ Hazır';} } else pump(); }); } }
+  pump(); }
 function learnImported(){ if(!IMPORT_WORDS||!IMPORT_WORDS.length)return; const t=upsertCustomTopic(IMPORT_WORDS); gateStart(function(){ startTopic(t); }); }
 function talkWithImported(){ if(!IMPORT_WORDS||!IMPORT_WORDS.length)return; chatSeedWords=IMPORT_WORDS.map(function(d){return d.w;}); gateStart(function(){ scrChat(); }); }
 function writeWithImported(){ if(!IMPORT_WORDS||!IMPORT_WORDS.length)return; WW=IMPORT_WORDS.slice(); gateStart(scrWriteWords); }
@@ -1781,7 +1806,7 @@ function attachSwipe(card,onLeft,onRight){
 }
 
 Object.assign(window,{scrTopics,pickTopic,startSelect,selDecide,toggleHide,toggleSave,cardGo,setMode,toggleNormal,toggleElif,openSheet,closeSheet,sheetSave,say,scrProduce,p1skip,p1next,bankTap,produceS1,produceS2,produceS3,scrDone,
-  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal});
+  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep});
 boot();
 </script>
 </body>

@@ -155,6 +155,12 @@
   @keyframes aBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
   .featchips{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;max-width:340px;margin:2px auto 22px;}
   .featchips span{font-size:11.5px;color:#6a5a52;background:#fff;border:1px solid #ece3da;border-radius:999px;padding:5px 11px;box-shadow:0 2px 6px #0000000a;}
+  .aikoAv .avimg{width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;}
+  .avlink{background:none;border:none;color:#9b7fb8;font-size:12.5px;font-weight:600;cursor:pointer;margin:0 0 14px;text-decoration:underline;}
+  .avgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;max-width:360px;margin:4px auto 0;}
+  .avopt{border:2px solid transparent;background:#fff;border-radius:16px;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;box-shadow:0 2px 8px #0000000d;}
+  .avopt img{width:100%;aspect-ratio:1;border-radius:12px;object-fit:cover;background:#f4eefb;}
+  .avopt span{font-size:12px;color:#5a4a42;font-weight:600;} .avopt.sel{border-color:var(--rose);box-shadow:0 4px 14px #b79bd340;}
   .authbtns{width:100%;max-width:300px;display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
   .form{display:flex;flex-direction:column;gap:14px;max-width:320px;margin:6px auto;width:100%;}
   .field label{font-size:12px;color:var(--muted);display:block;margin-bottom:5px;}
@@ -515,8 +521,8 @@ function pickTRVoice(){ try{ const vs=(window.speechSynthesis&&speechSynthesis.g
 function speakGreet(){ try{ if(!('speechSynthesis'in window)||!__greetText)return; speechSynthesis.cancel();
   const v=__ttsVoice||pickTRVoice(); const parts=(__greetText.match(/[^.!?]+[.!?]*/g)||[__greetText]).map(function(x){return x.trim();}).filter(Boolean);
   parts.forEach(function(p,i){ const u=new SpeechSynthesisUtterance(p); if(v){u.voice=v;u.lang=v.lang;}else u.lang='tr-TR'; u.rate=1.04;u.pitch=1.16;u.volume=1; if(i===0)u.onstart=function(){__greetSpoke=true;}; speechSynthesis.speak(u); }); }catch(e){} }
-function greetText(has){ if(has&&profile&&profile.name) return 'Merhaba '+profile.name+'! Hadi kaldığımız yerden devam edelim. Bence çok iyi gidiyoruz.';
-  return 'Merhaba! Çok doğru bir karar verdin, tebrikler. Yeni ve zor bir dünyaya giriyorsun; ben sana tüm desteğimi sunacağım. Zor olacağını biliyorum, ama azminle, çabanla İngilizceyi öğreneceksin.'; }
+function greetText(has){ if(has&&profile&&profile.name) return 'Merhaba '+profile.name+'! Bugün de çalışmaya hazır mısın? Güzel ve eğlenceli bir derse başlayalım mı?';
+  return 'Merhaba, hoş geldin. Yeni ve eğlenceli bir yola hazır mısın? Hem öğreneceğiz, hem konuşacağız, hem de eğleneceğiz. Hadi, şimdi önce testi yap ve sonra beraber planımızı yapalım.'; }
 /* Gerçek Aiko sesi: backend (OpenAI TTS) → mp3; önbelleğe alınır, olmazsa tarayıcı sesi */
 let __greetAudioEl=null;
 function blobToDataURL(b){ return new Promise(function(res){ try{ const fr=new FileReader(); fr.onload=function(){res(fr.result);}; fr.onerror=function(){res(null);}; fr.readAsDataURL(b);}catch(e){res(null);} }); }
@@ -542,8 +548,9 @@ function replayGreet(){ __greetSpoke=false; if(__greetAudioEl){try{__greetAudioE
 function scrWelcome(){ stopAll(); const has=!!profile;
   app.innerHTML=`<div class="screen welcome2">
     <div class="wtop" style="display:flex;flex-direction:column;align-items:center;width:100%">
-      <div class="aikoAv">${AIKO_SVG}</div>
-      <h1 style="margin:10px 0 2px">Kelime</h1><p class="wsub" style="margin:0 0 14px">Günde 5 kelime · İngilizceni sakince büyüt</p>
+      <div class="aikoAv">${aikoAvatarHtml()}</div>
+      <button class="avlink" onclick="scrAvatars()">🎭 Aiko’yu seç / değiştir</button>
+      <h1 style="margin:2px 0 2px">Kelime</h1><p class="wsub" style="margin:0 0 14px">Günde 5 kelime · İngilizceni sakince büyüt</p>
       <div class="wgreet" style="display:flex;gap:10px;align-items:center;max-width:340px;margin:0 auto 14px;background:#ffffffdd;border:1px solid #ece3da;border-radius:16px;padding:11px 13px;text-align:left;box-shadow:0 6px 18px #0000000f">
         <button id="wgPlay" onclick="replayGreet()" aria-label="Tekrar dinle" style="flex:none;width:42px;height:42px;border-radius:50%;border:none;background:linear-gradient(135deg,#efe2fb,#e3d3f6);font-size:18px;cursor:pointer;box-shadow:0 2px 8px #b79bd340">🔊</button>
         <div style="flex:1"><div style="font-size:10.5px;font-weight:700;color:#9b7fb8;letter-spacing:.04em;margin-bottom:1px">AIKO</div><p id="wgTxt" style="margin:0;font-size:12.5px;line-height:1.42;color:#5a4a42"></p></div>
@@ -555,8 +562,7 @@ function scrWelcome(){ stopAll(); const has=!!profile;
     <div class="wbot" style="width:100%;display:flex;flex-direction:column;align-items:center">
       <div class="authbtns">
         ${has?`<button class="primary" onclick="scrDashboard()">Devam et · ${profile.name}</button>
-               <button class="ghost" onclick="newUser()">Yeni kullanıcı (sıfırdan)</button>
-               ${(API_BASE)?`<button class="ghost" onclick="scrLogin()">Başka hesapla giriş yap</button>`:''}`
+               <button class="ghost" onclick="newUser()">Yeni kullanıcı (sıfırdan)</button>`
              :`<button class="primary" onclick="scrRegister()">Hemen başla →</button>
                ${(API_BASE)?`<button class="ghost" onclick="scrLogin()">Zaten hesabım var · giriş yap</button>`:'<button class="ghost" onclick="scrRegister()">Nasıl çalışıyor? Dene</button>'}`}
       </div>
@@ -567,6 +573,19 @@ function scrWelcome(){ stopAll(); const has=!!profile;
 }
 function existingTap(){ if(profile){scrDashboard();return;} if(API_BASE&&window.KelimeAPI){scrLogin();return;} const n=document.getElementById('wnote'); if(n)n.textContent='Kayıt bulunamadı — yeni kullanıcı olarak başlayalım.'; }
 function newUser(){ scrRegister(); }
+/* ===== Aiko avatar seçimi (AI üretilmiş, statik) ===== */
+var AVATARS=[{id:'f1',label:'Ada'},{id:'f2',label:'Ela'},{id:'f3',label:'Nur'},{id:'m1',label:'Emir'},{id:'m2',label:'Can'},{id:'m3',label:'Deniz'}];
+function avatarURL(id){ return (API_BASE||'').replace(/\/$/,'')+'/img/avatar-'+id+'.webp'; }
+function curAvatarId(){ return (profile&&profile.avatarId)||window.__pendingAvatar||''; }
+function aikoAvatarHtml(){ var id=curAvatarId(); if(id) return '<img class="avimg" src="'+avatarURL(id)+'" alt="" onerror="this.remove()">'; return AIKO_SVG; }
+function scrAvatars(){ stopAll(); var cur=curAvatarId();
+  app.innerHTML='<div class="screen">'
+   +'<div class="hdr"><button class="back" onclick="scrWelcome()">‹ Geri</button><span class="phase">Aiko’yu seç</span></div>'
+   +'<div class="content"><div class="welcome" style="margin-bottom:6px"><h1 style="font-size:22px">Rehberini seç 🌸</h1><p>Sana eşlik edecek Aiko avatarını seç. İstediğin zaman değiştirebilirsin.</p></div>'
+   +'<div class="avgrid">'+AVATARS.map(function(a){ return '<button class="avopt'+(a.id===cur?' sel':'')+'" onclick="chooseAvatar(\''+a.id+'\')"><img src="'+avatarURL(a.id)+'" alt="" loading="lazy" onerror="this.style.opacity=.3"><span>'+a.label+'</span></button>'; }).join('')+'</div>'
+   +'</div></div>';
+}
+function chooseAvatar(id){ if(profile){ profile.avatarId=id; saveProfile(); } else { window.__pendingAvatar=id; } scrWelcome(); }
 /* ---- GİRİŞ (başka cihaz / mevcut hesap) ---- */
 function scrLogin(){ stopAll();
   app.innerHTML=`<div class="screen">
@@ -618,7 +637,7 @@ async function doRegister(){ const name=(document.getElementById('rname').value|
   const emEl=document.getElementById('remail'), pwEl=document.getElementById('rpass');
   const email=emEl?(emEl.value||'').trim():'', password=pwEl?(pwEl.value||'').trim():'';
   const note=document.getElementById('rnote'), btn=document.querySelector('.footer .primary');
-  profile={name,age,joinDate:new Date().toISOString(),level:null,studied:{},known:{},lastTopicId:null,daysActive:[],subscribed:false,devOffset:0,levelStartCount:0,updatedAt:Date.now()};
+  profile={name,age,joinDate:new Date().toISOString(),level:null,studied:{},known:{},lastTopicId:null,daysActive:[],subscribed:false,devOffset:0,levelStartCount:0,avatarId:(window.__pendingAvatar||''),updatedAt:Date.now()};
   if(API_BASE && window.KelimeAPI){
     if(btn){btn.disabled=true;btn.textContent='Kaydediliyor…';}
     try{ const r=await KelimeAPI.register(name, age, {email:email||undefined, password:password||undefined, profile});
@@ -1040,7 +1059,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s257</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s259</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1806,7 +1825,7 @@ function attachSwipe(card,onLeft,onRight){
 }
 
 Object.assign(window,{scrTopics,pickTopic,startSelect,selDecide,toggleHide,toggleSave,cardGo,setMode,toggleNormal,toggleElif,openSheet,closeSheet,sheetSave,say,scrProduce,p1skip,p1next,bankTap,produceS1,produceS2,produceS3,scrDone,
-  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep});
+  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar});
 boot();
 </script>
 </body>

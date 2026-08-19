@@ -224,7 +224,7 @@
   @keyframes cpulse{0%,100%{box-shadow:0 0 0 0 rgba(198,95,74,.5);}50%{box-shadow:0 0 0 12px rgba(198,95,74,0);}}
   .chdr{padding:6px 16px 8px;display:flex;align-items:center;gap:11px;border-bottom:1px solid var(--line);flex-shrink:0;}
   .cav{width:48px;height:48px;border-radius:50%;overflow:hidden;background:#fce4dd;flex-shrink:0;box-shadow:0 3px 8px rgba(150,100,90,.2);}
-  .cav svg{width:100%;height:100%;display:block;} .cav.talking{animation:bob .5s ease-in-out infinite;}
+  .cav svg{width:100%;height:100%;display:block;} .cav .avimg{width:100%;height:100%;object-fit:cover;display:block;} .cav.talking{animation:bob .5s ease-in-out infinite;}
   .cav-name{font-weight:800;font-size:16px;} .cav-sub{font-size:11px;color:var(--sage);}
   .cwbar{display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px;background:#f6e6df;flex-shrink:0;}
   .cwchip{font-size:11px;font-weight:700;border:1px solid var(--rose-bd);background:var(--card);color:var(--rose);padding:3px 8px;border-radius:999px;}
@@ -517,6 +517,8 @@ let __ttsVoice=null,__greetText='',__greetSpoke=false,__greetPrimed=false;
 /* Seçili avatarın OpenAI sesi (kadın/erkek + her biri farklı) ve cinsiyeti */
 function avatarVoice(){ var id=curAvatarId(); var m={f1:'coral',f2:'shimmer',f3:'nova',m1:'onyx',m2:'ash',m3:'echo'}; return m[id]||'nova'; }
 function avatarGender(){ var id=curAvatarId(); return (id&&String(id).charAt(0)==='m')?'m':'f'; }
+/* Seçili eğitmenin adı (avatar seçilmemişse varsayılan 'Aiko') */
+function tutorName(){ var id=curAvatarId(); try{ var a=AVATARS.filter(function(x){return x.id===id;})[0]; return a?a.label:'Aiko'; }catch(e){ return 'Aiko'; } }
 function pickTRVoice(male){ try{ const vs=(window.speechSynthesis&&speechSynthesis.getVoices())||[]; const tr=vs.filter(x=>/^tr(-|_|$)/i.test(x.lang||'')); if(!tr.length)return null;
   const score=function(v){ const n=(v.name||'').toLowerCase(); let s=0; if(/enhanced|premium|natural|neural|gelişmiş/.test(n))s+=6; if(/google/.test(n))s+=3; if(v.localService)s+=1;
     if(male){ if(/erkek|male|\bman\b|mehmet|ahmet|emre|barış|baris|onur|volkan|tolga/.test(n))s+=4; }
@@ -531,7 +533,8 @@ function greetText(has){ if(has&&profile&&profile.name) return 'Merhaba '+profil
 /* Gerçek Aiko sesi: backend (OpenAI TTS) → mp3; önbelleğe alınır, olmazsa tarayıcı sesi */
 let __greetAudioEl=null;
 function blobToDataURL(b){ return new Promise(function(res){ try{ const fr=new FileReader(); fr.onload=function(){res(fr.result);}; fr.onerror=function(){res(null);}; fr.readAsDataURL(b);}catch(e){res(null);} }); }
-function ttsCacheKey(t,v){ var s=(t||'')+'|'+(v||''); let h=0; for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0; return 'kelimeApp.tts.'+h; }
+var TTSVER='v2'; /* talimat/ses değişince eski önbelleği geçersiz kıl */
+function ttsCacheKey(t,v){ var s=(t||'')+'|'+(v||'')+'|'+TTSVER; let h=0; for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0; return 'kelimeApp.tts.'+h; }
 function getCachedTTS(t,v){ try{ return localStorage.getItem(ttsCacheKey(t,v)); }catch(e){ return null; } }
 async function fetchGreetTTS(text){ var voice=avatarVoice();
   const cached=getCachedTTS(text,voice); if(cached) return cached;
@@ -554,14 +557,14 @@ function scrWelcome(){ stopAll(); const has=!!profile;
   app.innerHTML=`<div class="screen welcome2">
     <div class="wtop" style="display:flex;flex-direction:column;align-items:center;width:100%">
       <div class="aikoAv">${aikoAvatarHtml()}</div>
-      <button class="avlink" onclick="scrAvatars()">🎭 Aiko’yu seç / değiştir</button>
+      <button class="avlink" onclick="scrAvatars()">${curAvatarId()?('🎭 Eğitmenin: '+tutorName()+' · değiştir'):'🎭 Eğitmenini seç'}</button>
       <h1 style="margin:2px 0 2px">Kelime</h1><p class="wsub" style="margin:0 0 14px">Günde 5 kelime · İngilizceni sakince büyüt</p>
       <div class="wgreet" style="display:flex;gap:10px;align-items:center;max-width:340px;margin:0 auto 14px;background:#ffffffdd;border:1px solid #ece3da;border-radius:16px;padding:11px 13px;text-align:left;box-shadow:0 6px 18px #0000000f">
         <button id="wgPlay" onclick="replayGreet()" aria-label="Tekrar dinle" style="flex:none;width:42px;height:42px;border-radius:50%;border:none;background:linear-gradient(135deg,#efe2fb,#e3d3f6);font-size:18px;cursor:pointer;box-shadow:0 2px 8px #b79bd340">🔊</button>
-        <div style="flex:1"><div style="font-size:10.5px;font-weight:700;color:#9b7fb8;letter-spacing:.04em;margin-bottom:1px">AIKO</div><p id="wgTxt" style="margin:0;font-size:12.5px;line-height:1.42;color:#5a4a42"></p></div>
+        <div style="flex:1"><div style="font-size:10.5px;font-weight:700;color:#9b7fb8;letter-spacing:.04em;margin-bottom:1px">${tutorName().toLocaleUpperCase('tr')}</div><p id="wgTxt" style="margin:0;font-size:12.5px;line-height:1.42;color:#5a4a42"></p></div>
       </div>
       <div class="featchips">
-        <span>🎨 Gerçek görseller</span><span>🔁 Akıllı tekrar</span><span>🌸 Aiko ile konuş</span><span>📈 Seviyene göre</span>
+        <span>🎨 Gerçek görseller</span><span>🔁 Akıllı tekrar</span><span>🌸 ${tutorName()} ile konuş</span><span>📈 Seviyene göre</span>
       </div>
     </div>
     <div class="wbot" style="width:100%;display:flex;flex-direction:column;align-items:center">
@@ -585,8 +588,8 @@ function curAvatarId(){ return (profile&&profile.avatarId)||window.__pendingAvat
 function aikoAvatarHtml(){ var id=curAvatarId(); if(id) return '<img class="avimg" src="'+avatarURL(id)+'" alt="" onerror="this.remove()">'; return AIKO_SVG; }
 function scrAvatars(){ stopAll(); var cur=curAvatarId();
   app.innerHTML='<div class="screen">'
-   +'<div class="hdr"><button class="back" onclick="scrWelcome()">‹ Geri</button><span class="phase">Aiko’yu seç</span></div>'
-   +'<div class="content"><div class="welcome" style="margin-bottom:6px"><h1 style="font-size:22px">Rehberini seç 🌸</h1><p>Sana eşlik edecek Aiko avatarını seç. İstediğin zaman değiştirebilirsin.</p></div>'
+   +'<div class="hdr"><button class="back" onclick="scrWelcome()">‹ Geri</button><span class="phase">Eğitmenini seç</span></div>'
+   +'<div class="content"><div class="welcome" style="margin-bottom:6px"><h1 style="font-size:22px">Eğitmenini seç 🌸</h1><p>Sana birebir eşlik edecek eğitmenini seç. Tüm derslerinde yanında olacak; istediğin zaman değiştirebilirsin.</p></div>'
    +'<div class="avgrid">'+AVATARS.map(function(a){ return '<button class="avopt'+(a.id===cur?' sel':'')+'" onclick="chooseAvatar(\''+a.id+'\')"><img src="'+avatarURL(a.id)+'" alt="" loading="lazy" onerror="this.style.opacity=.3"><span>'+a.label+'</span></button>'; }).join('')+'</div>'
    +'</div></div>';
 }
@@ -1001,7 +1004,7 @@ function scrToday(mode){ stopAll(); if(!profile)return scrWelcome();
           <div><div class="tt">${t.name}</div><div class="td">${t.desc}</div></div>
           <div class="cnt">${t.words.length} kelime</div>
         </div>`).join('')}</div>
-      <button class="opt" style="margin-top:12px;border-color:#e3b3a6" onclick="gateStart(scrChat)">🌸 Aiko ile konuş · pratik</button>
+      <button class="opt" style="margin-top:12px;border-color:#e3b3a6" onclick="gateStart(scrChat)">🌸 ${tutorName()} ile konuş · pratik</button>
       <button class="opt" style="margin-top:10px;border-color:#cbb3d4" onclick="scrPhoto()">📷 Fotoğraftan konuş / yaz</button>
       <button class="opt" style="margin-top:10px;border-color:#cbb3d4" onclick="scrImport()">📄 Kendi içeriğinden öğren · foto/dosya</button>
     </div>
@@ -1064,7 +1067,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s260</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s262</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1475,8 +1478,8 @@ function scrChat(opts){ stopAll(); primeTTS(); opts=opts||{}; const photo=opts.p
   chatWords=photo?[]:((chatSeedWords&&chatSeedWords.length)?chatSeedWords.slice():chatTargets()); chatSeedWords=null; chatIdx=-1; chatUsed=new Set(); chatFixes=[];
   app.innerHTML=`<div class="screen">
     <div class="chdr"><button class="back" onclick="${photo?'scrPhoto()':'scrDashboard()'}">‹</button>
-      <div class="cav" id="cav">${AIKO_SVG}</div>
-      <div style="flex:1"><div class="cav-name">Aiko 🌸</div><div class="cav-sub" id="cstatus">${photo?'fotoğrafın üzerine konuşuyoruz':'çevrimiçi · konuşma partnerin'}</div></div>
+      <div class="cav" id="cav">${aikoAvatarHtml()}</div>
+      <div style="flex:1"><div class="cav-name">${tutorName()} 🌸</div><div class="cav-sub" id="cstatus">${photo?'fotoğrafın üzerine konuşuyoruz':'çevrimiçi · eğitmenin'}</div></div>
       ${photo?`<img class="photothumb" src="${photo}" alt="">`:'<span class="phase">Konuşma</span>'}</div>
     ${photo?'<div class="cwbar" id="cwbar" style="color:var(--muted);font-size:12px">📷 Gördüklerini İngilizce anlat</div>':`<div class="cwbar" id="cwbar">${chatWords.map(function(w){return `<span class="cwchip" data-w="${w}">${w}</span>`;}).join('')}</div>`}
     <div class="cchat" id="cchat"></div>
@@ -1502,7 +1505,7 @@ function scrChat(opts){ stopAll(); primeTTS(); opts=opts||{}; const photo=opts.p
   } else { mic.style.display='none'; }
   // açılış
   if(chatMode==='photo') cbot("What a nice photo! 🌸 Let's talk about it together.");
-  else cbot("Hi! I'm Aiko 🌸 Let's practise your words together. Try to use them in your sentences!");
+  else cbot("Hi! I'm "+tutorName()+" 🌸 Let's practise your words together. Try to use them in your sentences!");
   setTimeout(chatNext, 1400);
 }
 function cav(on){ const a=document.getElementById('cav'); if(a)a.classList.toggle('talking',on); }
@@ -1528,7 +1531,7 @@ function cbot(t,fix){ const c=document.getElementById('cchat'); if(!c)return; co
   const btn=d.querySelector('.crespk'); if(btn) btn.onclick=function(){ cspeak(t); };
   cspeak(t); }
 function cme(t){ const c=document.getElementById('cchat'); if(!c)return; const d=document.createElement('div'); d.className='cmsg me'; d.textContent=t; c.appendChild(d); c.scrollTop=c.scrollHeight; }
-function ctyping(on){ const c=document.getElementById('cchat'); if(!c)return; let t=document.getElementById('ctyp'); if(on){ if(!t){t=document.createElement('div');t.id='ctyp';t.className='ctyping';t.textContent='Aiko yazıyor…';c.appendChild(t);c.scrollTop=c.scrollHeight;} } else if(t){t.remove();} }
+function ctyping(on){ const c=document.getElementById('cchat'); if(!c)return; let t=document.getElementById('ctyp'); if(on){ if(!t){t=document.createElement('div');t.id='ctyp';t.className='ctyping';t.textContent=tutorName()+' yazıyor…';c.appendChild(t);c.scrollTop=c.scrollHeight;} } else if(t){t.remove();} }
 function cmarkUsed(text){ const low=' '+text.toLowerCase()+' '; chatWords.forEach(function(w){ const base=w.toLowerCase(); if(low.indexOf(base)>=0){ chatUsed.add(w); const ch=document.querySelector('.cwchip[data-w="'+w+'"]'); if(ch)ch.classList.add('on'); } }); }
 function cpick(a){ return a[Math.floor((chatIdx+a.length)%a.length)]; }
 function chatNext(){ chatIdx++;

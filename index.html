@@ -921,8 +921,13 @@ function scrLevelResult(){ const l=profile.level;
     wnote = (!fb||wc===0) ? 'Yazma bölümünü boş bıraktın.' : (wc<20 ? 'Kısa bir yanıt yazdın ('+wc+' kelime). Daha uzun yazmak daha güçlü bir değerlendirme sağlar.' : (chg===0?('Akıcı yazdın ('+wc+' kelime), belirgin bir hata bulunamadı 👏'):(wc+' kelime yazdın; ~'+chg+' küçük düzeltme önerisi çıktı.')));
   }
   const sapi=T&&T.speakApi; let slabel='Konuşma (ön değerlendirme)', snote;
-  if(sapi && !sapi.mock){ slabel='Konuşma · yapay zekâ değerlendirmesi';
-    snote='Seviye: <b>'+esc(sapi.cefr||'?')+'</b>'+(sapi.ielts_estimate?' · IELTS ~'+esc(sapi.ielts_estimate):'')+'.'+(sapi.feedback_tr?'<br>'+esc(sapi.feedback_tr):'')+(T.speakTxt?'<br><span style="color:var(--muted);font-size:12px">Duyduğum: “'+esc(String(T.speakTxt).slice(0,120))+'”</span>':'');
+  if(sapi && !sapi.mock){
+    const heard=T.speakTxt?'<br><span style="color:var(--muted);font-size:12px">Duyduğum: “'+esc(String(T.speakTxt).slice(0,120))+'”</span>':'';
+    if(cefrOrd(sapi.cefr)<0){ slabel='Konuşma · İngilizce değildi';
+      snote=(sapi.feedback_tr?esc(sapi.feedback_tr):'Bu bölümde İngilizce konuşman gerekiyor. Tekrar denerken İngilizce cevap ver.')+' <span style="color:var(--muted);font-size:12px">(Puana katılmadı.)</span>'+heard;
+    } else { slabel='Konuşma · yapay zekâ değerlendirmesi';
+      snote='Seviye: <b>'+esc(sapi.cefr)+'</b>'+(sapi.ielts_estimate?' · IELTS ~'+esc(sapi.ielts_estimate):'')+'.'+(sapi.feedback_tr?'<br>'+esc(sapi.feedback_tr):'')+heard;
+    }
   } else if(T&&T.speakBlob){ snote='Konuşma kaydın alındı ama değerlendirilemedi. Sunucuda <b>ENABLE_STT=1</b> gerekiyor.'; }
   else if(T&&T.speak){ snote='Konuşma denemen alındı 👍'; }
   else { snote='Konuşma bölümünü atladın.'; }
@@ -1093,7 +1098,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s266</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s267</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>

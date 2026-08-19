@@ -143,7 +143,7 @@
   .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 15px;margin-bottom:12px;} .panel h4{margin:0 0 7px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;} .panel.ai{background:linear-gradient(180deg,#fff6f1,#fdeee7);border-color:var(--rose-bd);} .panel.ai h4{color:var(--rose);} .panel .txt{font-size:15px;line-height:1.6;white-space:pre-wrap;}
   .playrow{display:flex;gap:10px;margin-top:6px;} .pbtn{flex:1;border:1px solid var(--rose-bd);background:var(--card);color:var(--rose);border-radius:13px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;} .pbtn.hyp{background:var(--rose-bg);}
   .diffnote{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;}
-  .done{align-items:center;justify-content:center;text-align:center;padding:26px;}
+  .screen.done{align-items:center;justify-content:center;text-align:center;padding:26px;}
   .done .big{font-size:52px;} .done h2{margin:8px 0 2px;font-size:22px;} .done p{color:var(--muted);font-size:13px;max-width:260px;line-height:1.55;margin:0 0 14px;}
   .chips{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-bottom:8px;} .chip{font-size:12px;font-weight:600;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 11px;}
 
@@ -1068,7 +1068,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s263</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s264</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>

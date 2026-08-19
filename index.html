@@ -55,7 +55,7 @@
   .subnote{font-size:11px;color:var(--muted);text-align:center;padding:4px 20px 12px;}
 
   /* progress pips */
-  .pips{display:flex;gap:5px;flex:1;} .pip{flex:1;height:3px;border-radius:3px;background:#e7d2c8;transition:.25s;}
+  .pips{display:flex;flex-direction:row;align-items:center;gap:5px;flex:1;} .pip{flex:1 1 0;height:4px!important;max-height:4px;min-height:0;align-self:center;border-radius:3px;background:#e7d2c8;transition:.25s;}
   .pip.on{background:var(--rose);} .pip.done{background:var(--sage);}
   .prow{display:flex;align-items:center;gap:10px;padding:2px 20px 2px;flex-shrink:0;}
   .count{font-size:13px;color:var(--muted);white-space:nowrap;} .count b{color:var(--rose);font-size:15px;}
@@ -102,7 +102,8 @@
   .btn.learn{background:var(--rose-bg);color:#a95742;border:1px solid var(--rose-bd);}
   .nav{width:50px;height:50px;border-radius:15px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:20px;cursor:pointer;flex-shrink:0;}
   .nav:disabled{opacity:.35;}
-  .dots{display:flex;gap:5px;padding:5px 20px 3px;flex-shrink:0;} .cdot{flex:1;height:3px;border-radius:3px;background:#e7d2c8;} .cdot.on{background:var(--rose);} .cdot.done{background:var(--sage);}
+  .dots{display:flex;flex-direction:row;align-items:center;gap:5px;padding:6px 20px 4px;flex-shrink:0;height:auto;}
+  .cdot{flex:1 1 0;height:4px!important;max-height:4px;min-height:0;align-self:center;border-radius:3px;background:#e7d2c8;} .cdot.on{background:var(--rose);} .cdot.done{background:var(--sage);}
 
   .modebar{display:flex;gap:6px;background:#efdcd4;border-radius:14px;padding:4px;margin:8px 20px 0;flex-shrink:0;}
   .mode{flex:1;border:none;background:transparent;color:#8a776e;font-size:12px;font-weight:700;padding:9px 2px;border-radius:11px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;}
@@ -1067,7 +1068,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s262</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s263</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>

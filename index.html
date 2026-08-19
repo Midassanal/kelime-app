@@ -281,6 +281,7 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
     gradeWriting: (text,level)=>jfetch('/api/writing/grade',{method:'POST',body:JSON.stringify({text,level})}),
     extractVocab: (payload)=>jfetch('/api/vocab/extract',{method:'POST',body:JSON.stringify(payload||{})}),
     gradeSpeaking: (transcript,level)=>jfetch('/api/speaking/grade',{method:'POST',body:JSON.stringify({transcript,level})}),
+    async gradeSpeakingAudio(blob,level){ if(!BASE) return {offline:true}; try{ const fd=new FormData(); var ext=(blob&&blob.type&&blob.type.indexOf('mp4')>=0)?'mp4':(blob&&blob.type&&blob.type.indexOf('mpeg')>=0?'mp3':'webm'); fd.append('audio',blob,'speech.'+ext); fd.append('level',level||'A2'); const h={}; if(TOKEN)h.Authorization='Bearer '+TOKEN; const r=await fetch(BASE+'/api/speaking/grade',{method:'POST',headers:h,body:fd}); return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
     generateStory: (words,level,tts=false)=>jfetch('/api/story/generate',{method:'POST',body:JSON.stringify({words,level,tts})}),
     chatTurn: (message,opts={})=>jfetch('/api/chat/turn',{method:'POST',body:JSON.stringify({message,level:opts.level||'A2',words:opts.words||[],history:opts.history||[],tts:opts.tts?1:0})}),
     wordImage: (word,prompt)=>jfetch('/api/image',{method:'POST',body:JSON.stringify({word:word,prompt:prompt||undefined})}),
@@ -878,12 +879,31 @@ function speakRec(){ const el=document.getElementById('sptr'); const b=document.
     startSpeakSTT();
   }).catch(function(){ if(el)el.textContent='(Mikrofon izni verilmedi — izin verip tekrar dene, ya da yüksek sesle oku ve Bitir\'e bas.)'; });
 }
-function finishSpeak(){ stopSpeakRec(); if(sprec){try{sprec.stop();}catch(e){}sprec=null;} finishLT(); }
+async function finishSpeak(){ const btn=document.querySelector('.footer .primary'); stopSpeakRec(); if(sprec){try{sprec.stop();}catch(e){}sprec=null;}
+  // Kayıt varsa backend'e (Whisper) gönder → transkript + CEFR; seviyeye katılır.
+  if(T.speakBlob && API_BASE && window.KelimeAPI && KelimeAPI.gradeSpeakingAudio){
+    if(btn){ btn.disabled=true; btn.textContent='Konuşman değerlendiriliyor…'; }
+    const el=document.getElementById('sptr');
+    try{ const r=await KelimeAPI.gradeSpeakingAudio(T.speakBlob,(profile&&profile.level)||'A2');
+      if(r && r.result && !r.mock && !r.offline && !r.error){ T.speakApi=r.result; if(r.transcript)T.speakTxt=r.transcript;
+        if(el && r.transcript) el.innerHTML='✓ Duydum: “'+esc(r.transcript)+'”'; }
+    }catch(e){}
+    if(btn){ btn.disabled=false; }
+  }
+  finishLT(); }
+function cefrOrd(s){ try{ var m=String(s||'').toUpperCase().match(/[ABC][12]/); return m?ORD.indexOf(m[0]):-1; }catch(e){ return -1; } }
 function computeLevel(){ const corr={},tot={}; ORD.forEach(l=>{corr[l]=0;tot[l]=0;});
   const all=[]; GRAM.forEach((q,i)=>all.push([q.lvl,T.gram[i]])); READ.qs.forEach((q,i)=>all.push([q.lvl,T.read[i]])); LISTEN.qs.forEach((q,i)=>all.push([q.lvl,T.listen[i]]));
   all.forEach(a=>{ tot[a[0]]++; if(a[1])corr[a[0]]++; });
-  let level='A1'; for(const l of ORD){ const acc=tot[l]?corr[l]/tot[l]:1; if(acc>=0.6)level=l; else break; }
-  return {level,score:all.filter(a=>a[1]).length,total:all.length}; }
+  let mcq='A1'; for(const l of ORD){ const acc=tot[l]?corr[l]/tot[l]:1; if(acc>=0.6)mcq=l; else break; }
+  // Test sorularına ek olarak YAZMA ve KONUŞMA CEFR tahminlerini de kat (MCQ 2 kat ağırlık).
+  var ords=[ORD.indexOf(mcq),ORD.indexOf(mcq)];
+  var wo=cefrOrd(T&&T.writeApi&&T.writeApi.cefr); if(wo>=0)ords.push(wo);
+  var so=cefrOrd(T&&T.speakApi&&T.speakApi.cefr); if(so>=0)ords.push(so);
+  var avg=Math.round(ords.reduce(function(a,b){return a+b;},0)/ords.length);
+  var level=ORD[Math.max(0,Math.min(5,avg))];
+  return {level,mcq:mcq,score:all.filter(a=>a[1]).length,total:all.length,
+    parts:{mcq:mcq,writing:(wo>=0?ORD[wo]:null),speaking:(so>=0?ORD[so]:null)}}; }
 function finishLT(){ const r=computeLevel(); const old=profile.level; profile.level=r.level; profile.testScore=r.score; profile.testTotal=r.total; if(profile.levelStartCount===undefined||r.level!==old) profile.levelStartCount=totalLearned(); saveProfile(); scrLevelResult(); }
 function retakeTest(){ scrLevelTest(); }
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -900,7 +920,12 @@ function scrLevelResult(){ const l=profile.level;
   } else {
     wnote = (!fb||wc===0) ? 'Yazma bölümünü boş bıraktın.' : (wc<20 ? 'Kısa bir yanıt yazdın ('+wc+' kelime). Daha uzun yazmak daha güçlü bir değerlendirme sağlar.' : (chg===0?('Akıcı yazdın ('+wc+' kelime), belirgin bir hata bulunamadı 👏'):(wc+' kelime yazdın; ~'+chg+' küçük düzeltme önerisi çıktı.')));
   }
-  const snote = (T&&T.speak) ? 'Konuşma denemen alındı 👍' : 'Konuşma bölümünü atladın.';
+  const sapi=T&&T.speakApi; let slabel='Konuşma (ön değerlendirme)', snote;
+  if(sapi && !sapi.mock){ slabel='Konuşma · yapay zekâ değerlendirmesi';
+    snote='Seviye: <b>'+esc(sapi.cefr||'?')+'</b>'+(sapi.ielts_estimate?' · IELTS ~'+esc(sapi.ielts_estimate):'')+'.'+(sapi.feedback_tr?'<br>'+esc(sapi.feedback_tr):'')+(T.speakTxt?'<br><span style="color:var(--muted);font-size:12px">Duyduğum: “'+esc(String(T.speakTxt).slice(0,120))+'”</span>':'');
+  } else if(T&&T.speakBlob){ snote='Konuşma kaydın alındı ama değerlendirilemedi. Sunucuda <b>ENABLE_STT=1</b> gerekiyor.'; }
+  else if(T&&T.speak){ snote='Konuşma denemen alındı 👍'; }
+  else { snote='Konuşma bölümünü atladın.'; }
   const sub = aiLive ? 'Yazma değerlendirmesi yapay zekâ ile yapıldı. Konuşma bandı için ses değerlendirmesi de bağlanabilir.' : 'Yazma ve konuşma için gerçek IELTS bandı, yapay zekâ değerlendirmesi bağlandığında puanlanır.';
   app.innerHTML=`<div class="screen" style="overflow-y:auto">
     <div class="dgreet" style="text-align:center;padding-top:14px"><div style="font-size:40px">🎯</div><h1 style="font-size:24px;margin:4px 0 2px">Seviyen: ${l}</h1><p>${LVLDESC[l]} · IELTS ≈ ${IELTSMAP[l]} · ${profile.testScore}/${profile.testTotal||''} doğru</p></div>
@@ -908,7 +933,7 @@ function scrLevelResult(){ const l=profile.level;
     ${roadCardHtml()}
     <div class="road" style="margin:8px 18px 0">
       <div class="rr"><span class="ic">✍️</span><div><b>${wlabel}</b><br>${wnote}</div></div>
-      <div class="rr"><span class="ic">🗣️</span><div><b>Konuşma (ön değerlendirme)</b><br>${snote}</div></div>
+      <div class="rr"><span class="ic">🗣️</span><div><b>${slabel}</b><br>${snote}</div></div>
     </div>
     <div class="subnote">${sub}</div>
     <div class="footer"><button class="primary" onclick="scrToday('new')">Hangi konuyla başlayalım? →</button></div>
@@ -1068,7 +1093,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s265</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s266</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>

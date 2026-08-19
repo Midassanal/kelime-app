@@ -632,7 +632,7 @@ function scrRegister(){ stopAll();
       <h1 style="font-size:24px;margin:0 0 4px;text-align:center">Tanışalım 🌿</h1>
       <p style="color:var(--muted);font-size:13px;text-align:center;margin:0 0 20px">Sadece adın ve yaşın yeterli.</p>
       <div class="form">
-        <div class="field"><label>Adın</label><input id="rname" type="text" placeholder="ör. Elif" autocomplete="off"></div>
+        <div class="field"><label>Adın</label><input id="rname" type="text" placeholder="ör. Ayşe" autocomplete="off"></div>
         <div class="field"><label>Yaşın</label><input id="rage" type="number" inputmode="numeric" placeholder="ör. 28"></div>
         ${(API_BASE)?`<div class="field"><label>E-posta <span style="color:var(--muted);font-weight:400">· cihazlar arası (isteğe bağlı)</span></label><input id="remail" type="email" placeholder="ilerlemen kaybolmasın" autocomplete="off"></div>
         <div class="field"><label>Şifre <span style="color:var(--muted);font-weight:400">· isteğe bağlı</span></label><input id="rpass" type="password" placeholder="en az 4 karakter"></div>`:''}
@@ -957,7 +957,7 @@ function scrPaywall(){ stopAll();
     <h1>Denemen tamamlandı</h1>
     <p>3 günlük ücretsiz denemen bitti. Gelişimini kaydederek devam etmek için aylık üyeliğe geç.</p>
     <div class="plan"><div><span class="price">₺149</span><span class="per"> / ay</span></div>
-      <ul><li>Sınırsız konu ve kelime</li><li>Günlük hikâye + Elif hipnotik ses</li><li>İlerlemen ve seviyen kayıtlı</li><li>İstediğin an iptal</li></ul></div>
+      <ul><li>Sınırsız konu ve kelime</li><li>Günlük hikâye + eğitmenin sesiyle dinleme</li><li>İlerlemen ve seviyen kayıtlı</li><li>İstediğin an iptal</li></ul></div>
     <div style="width:100%;max-width:300px;margin-top:6px"><button class="primary" onclick="subscribeNow()">Üyeliği başlat</button>
       <button class="ghost" onclick="scrDashboard()">Belki sonra</button></div>
     <div class="subnote">Fiyat örnektir · prototip</div>
@@ -1068,7 +1068,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s264</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s265</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1202,13 +1202,9 @@ function scrStory(){ stopAll(); storyMode='read'; STORY=buildStory();
     <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Hikâye</span></div>
     <div class="modebar">
       <button class="mode on" data-m="read" onclick="setMode('read')">📖 Oku<small>sessiz</small></button>
-      <button class="mode" data-m="normal" onclick="setMode('normal')">🔊 Normal<small>tarayıcı</small></button>
-      <button class="mode" data-m="hyp" onclick="setMode('hyp')">🌙 Elif<small>hipnotik</small></button>
+      <button class="mode" data-m="normal" onclick="setMode('normal')">🔊 ${tutorName()} ile dinle<small>sesli</small></button>
     </div>
-    <div class="player" id="player"><button class="play" id="playn" onclick="toggleNormal()">▶</button><div class="pbar"><div class="pfill" id="pfill"></div></div><span class="plabel">Normal ses</span></div>
-    <div class="elifplayer" id="elifp"><div class="breathe">🌙</div>
-      <button class="eplay" id="eplay" onclick="toggleElif()">▶ Hikâyeyi dinle</button>
-      <div class="elabel">Hikâye <b>hipnotik tonda</b> okunuyor (yavaş & sakin).<br>Gerçek uygulamada bu, Elif'in sesiyle üretilecek.</div></div>
+    <div class="player" id="player"><button class="play" id="playn" onclick="toggleNormal()">▶</button><div class="pbar"><div class="pfill" id="pfill"></div></div><span class="plabel">${tutorName()} okuyor</span></div>
     <div class="content"><div class="stitle">${currentTopic.sTitle}</div>
       <div class="smeta">≈ 1 dk · <b>seçtiğin kelimelerden</b> örüldü · dinamik</div>
       <div class="story" id="story"></div>
@@ -1235,9 +1231,7 @@ function renderStory(){
 function setMode(m){ stopAll(); storyMode=m;
   document.querySelectorAll('.mode').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
   document.getElementById('player').classList.toggle('show',m==='normal');
-  document.getElementById('elifp').classList.toggle('show',m==='hyp');
   document.getElementById('playn').textContent='▶'; document.getElementById('pfill').style.width='0'; clearNow();
-  document.getElementById('eplay').textContent='▶ Elif ile dinle';
 }
 function clearNow(){ storyToks.forEach(t=>t.el&&t.el.classList.remove('now')); }
 let normUtter=null, normPlaying=false;
@@ -1381,7 +1375,7 @@ async function produceS3(){ stopAll();
         <div id="aigrade">${willAI?'<div class="diffnote">🤖 Yapay zekâ değerlendiriyor… (ilk seferde sunucu uyanırken biraz sürebilir)</div>':''}</div>
         <div class="playrow"><button class="pbtn hyp" onclick="say(document.getElementById('imp').textContent,true)">🌙 Hipnotik dinle</button>
           <button class="pbtn" onclick="say(document.getElementById('imp').textContent,false)">🔊 Normal dinle</button></div>
-        <div class="diffnote">${willAI?'Yapay zekâ; dilbilgisi + akıcılık için daha derin düzeltir. Ses ileride <b>Elif</b> ile üretilebilir.':'Yazım + temel dilbilgisi düzeltilir. Backend bağlanınca yapay zekâ daha derin değerlendirir.'}</div>
+        <div class="diffnote">${willAI?'Yapay zekâ; dilbilgisi + akıcılık için daha derin düzeltir. Ses eğitmeninin sesiyle üretilir.':'Yazım + temel dilbilgisi düzeltilir. Backend bağlanınca yapay zekâ daha derin değerlendirir.'}</div>
       </div>
     </div>
     <div class="footer"><button class="primary sage" onclick="scrDone()">Bugünü tamamla ✓</button>

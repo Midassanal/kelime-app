@@ -267,6 +267,8 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
     try {
       const r = await fetch(BASE+path, { ...opts, headers });
       const data = await r.json().catch(()=>({}));
+      if (r.status===402 || data.paywall){ try{ if(window.__on402)window.__on402(); }catch(e){} return { error:'trial_ended', paywall:true, status:402 }; }
+      if (r.status===401 && TOKEN){ setToken(null); try{localStorage.removeItem('kelimeApp.token');}catch(e){} try{ if(window.__reanon)window.__reanon(); }catch(e){} }
       if (!r.ok) return { error: data.error || ('HTTP '+r.status), status: r.status };
       return data;
     } catch (e) { return { offline:true, error:String(e.message) }; }
@@ -274,7 +276,9 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
   const API = {
     setBase, setToken, getBase: ()=>BASE,
     health: ()=>jfetch('/api/health'),
+    async anon(){ const r=await jfetch('/api/auth/anon',{method:'POST',body:'{}'}); if(r.token)setToken(r.token); return r; },
     async register(name, age, extra={}){ const r=await jfetch('/api/auth/register',{method:'POST',body:JSON.stringify({name,age,...extra})}); if(r.token)setToken(r.token); return r; },
+    upgrade:(name,age,extra={})=>jfetch('/api/auth/upgrade',{method:'POST',body:JSON.stringify({name,age,...extra})}),
     async login(email,password){ const r=await jfetch('/api/auth/login',{method:'POST',body:JSON.stringify({email,password})}); if(r.token)setToken(r.token); return r; },
     getProfile: ()=>jfetch('/api/profile'),
     saveProfile: (profile)=>jfetch('/api/profile',{method:'PUT',body:JSON.stringify({profile})}),
@@ -672,10 +676,15 @@ async function doRegister(){ const name=(document.getElementById('rname').value|
   profile={name,age,joinDate:new Date().toISOString(),level:null,studied:{},known:{},lastTopicId:null,daysActive:[],subscribed:false,devOffset:0,levelStartCount:0,avatarId:(window.__pendingAvatar||''),updatedAt:Date.now()};
   if(API_BASE && window.KelimeAPI){
     if(btn){btn.disabled=true;btn.textContent='Kaydediliyor…';}
-    try{ const r=await KelimeAPI.register(name, age, {email:email||undefined, password:password||undefined, profile});
-      if(r&&r.token){ setAuthToken(r.token); }
-      else if(r&&r.error&&!r.offline){ if(note)note.textContent=r.error; if(btn){btn.disabled=false;btn.textContent='Devam → seviye testi';} return; }
-      // r.offline ise sunucuya ulaşılamadı — yerel olarak devam et (uygulama çevrimdışı da çalışır)
+    try{
+      var r;
+      if(getAuthToken() && KelimeAPI.upgrade){ // anonim hesabı yükselt (token korunur)
+        r=await KelimeAPI.upgrade(name, age, {email:email||undefined, password:password||undefined, profile});
+      } else {
+        r=await KelimeAPI.register(name, age, {email:email||undefined, password:password||undefined, profile});
+        if(r&&r.token) setAuthToken(r.token);
+      }
+      if(r&&r.error&&!r.offline){ if(note)note.textContent=r.error; if(btn){btn.disabled=false;btn.textContent='Devam → seviye testi';} return; }
     }catch(e){}
     if(btn){btn.disabled=false;btn.textContent='Devam → seviye testi';}
   }
@@ -1051,8 +1060,12 @@ function startTopic(t){ currentTopic=t;
   if(pool.length<5) pool=t.words.filter(function(w){return skip.indexOf(w.w)<0;});
   if(pool.length<1) pool=t.words.slice();
   WORDS=pool; WMAP={}; WORDS.forEach(function(d){WMAP[d.w]=d;}); startSelect(); }
+var __paywallShown=false;
+window.__on402=function(){ if(__paywallShown)return; __paywallShown=true; if(profile){ profile.subscribed=false; } if(typeof scrPaywall==='function') scrPaywall(); };
+async function ensureToken(){ if(getAuthToken()||!API_BASE||!(window.KelimeAPI&&KelimeAPI.anon))return; try{ var r=await KelimeAPI.anon(); if(r&&r.token){ setAuthToken(r.token); } }catch(e){} }
+var __reanonBusy=false; window.__reanon=function(){ if(__reanonBusy)return; __reanonBusy=true; ensureToken().then(function(){ __reanonBusy=false; }); };
 function boot(){ loadProfile(); const tok=getAuthToken(); if(tok&&window.KelimeAPI)KelimeAPI.setToken(tok); scrWelcome();
-  if(tok&&API_BASE){ syncPull().then(function(ch){ if(ch) scrWelcome(); }); }
+  ensureToken().then(function(){ if(getAuthToken()&&API_BASE){ syncPull().then(function(ch){ if(ch) scrWelcome(); }); } });
   try{ if(new URLSearchParams(location.search).get('paid')!=null) checkPaidReturn(); }catch(e){} }
 
 /* ================= 0) KONU SEÇİMİ ================= */
@@ -1147,7 +1160,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s273</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s274</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>

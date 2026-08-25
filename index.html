@@ -280,6 +280,7 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
     saveProfile: (profile)=>jfetch('/api/profile',{method:'PUT',body:JSON.stringify({profile})}),
     gradeWriting: (text,level)=>jfetch('/api/writing/grade',{method:'POST',body:JSON.stringify({text,level})}),
     extractVocab: (payload)=>jfetch('/api/vocab/extract',{method:'POST',body:JSON.stringify(payload||{})}),
+    enrichVocab: (words,level)=>jfetch('/api/vocab/enrich',{method:'POST',body:JSON.stringify({words,level})}),
     gradeSpeaking: (transcript,level)=>jfetch('/api/speaking/grade',{method:'POST',body:JSON.stringify({transcript,level})}),
     async gradeSpeakingAudio(blob,level){ if(!BASE) return {offline:true}; try{ const fd=new FormData(); var ext=(blob&&blob.type&&blob.type.indexOf('mp4')>=0)?'mp4':(blob&&blob.type&&blob.type.indexOf('mpeg')>=0?'mp3':'webm'); fd.append('audio',blob,'speech.'+ext); fd.append('level',level||'A2'); const h={}; if(TOKEN)h.Authorization='Bearer '+TOKEN; const r=await fetch(BASE+'/api/speaking/grade',{method:'POST',headers:h,body:fd}); return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
     generateStory: (words,level,tts=false)=>jfetch('/api/story/generate',{method:'POST',body:JSON.stringify({words,level,tts})}),
@@ -1146,7 +1147,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s272</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s273</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1792,7 +1793,24 @@ async function doExtract(){ const noteEl=document.getElementById('inote'); const
     if(!ok){ return scrVisionInfo(); } // vision yoksa: sahte kelime YOK — dürüst yönlendirme
   }
   if(!words||!words.length){ if(noteEl)noteEl.textContent='Kelime çıkarılamadı — biraz daha metin dene.'; return; }
+  words=await enrichMissing(words,(profile&&profile.level)||'A2',noteEl);
   scrImportResult(words, noteMsg);
+}
+/* Haznede olmayan (seviyesiz/anlamsız) kelimeleri backend LLM ile tamamla. */
+async function enrichMissing(words,level,noteEl){
+  if(!(API_BASE&&window.KelimeAPI&&KelimeAPI.enrichVocab))return words;
+  var miss=words.filter(function(d){ return !d.lvl || !d.mean || d.mean==='—'; }).map(function(d){return d.w;});
+  if(!miss.length)return words;
+  if(noteEl)noteEl.textContent='Kelimeler zenginleştiriliyor…';
+  try{ var r=await KelimeAPI.enrichVocab(miss,level);
+    if(r&&r.items&&r.items.length){ var by={}; r.items.forEach(function(it){ by[String(it.w).toLowerCase()]=it; });
+      words=words.map(function(d){ var it=by[String(d.w).toLowerCase()]; if(!it)return d;
+        return { w:d.w, pos:d.pos||it.pos||'', lvl:d.lvl||it.lvl||'',
+          mean:(d.mean&&d.mean!=='—')?d.mean:(it.mean||d.mean),
+          ex:(d.ex&&String(d.ex).length>3)?d.ex:(it.ex||d.ex), tr:d.tr||it.tr||'' }; });
+    }
+  }catch(e){}
+  return words;
 }
 function scrVisionInfo(){ stopAll();
   app.innerHTML=`<div class="screen">

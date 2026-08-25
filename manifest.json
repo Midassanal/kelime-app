@@ -1,0 +1,17 @@
+{
+  "name": "Kelime — İngilizce Öğren",
+  "short_name": "Kelime",
+  "description": "Günde 5 kelime ile İngilizceni sakince büyüt: görseller, seslendirme, seviye testi ve akıllı tekrar.",
+  "lang": "tr",
+  "dir": "ltr",
+  "start_url": "./?src=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fbf6f1",
+  "theme_color": "#f0e2db",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

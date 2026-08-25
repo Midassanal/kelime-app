@@ -8,7 +8,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Kelime">
 <meta name="theme-color" content="#f0e2db">
-<title>Kelime · İngilizce (Prototip)</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-32.png">
+<title>Kelime · İngilizce Öğren</title>
 <style>
   :root{
     --bg:#f0e2db; --phone:#f7ebe5; --card:#fffcfa; --ink:#4c403b; --muted:#a8968d; --line:#ecd7ce;
@@ -1160,7 +1163,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s274</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s275</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1935,5 +1938,6 @@ Object.assign(window,{scrTopics,pickTopic,startSelect,selDecide,toggleHide,toggl
   scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar,cancelSub,chatPlayPause});
 boot();
 </script>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
 </body>
 </html>

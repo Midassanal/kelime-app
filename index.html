@@ -286,6 +286,8 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
     chatTurn: (message,opts={})=>jfetch('/api/chat/turn',{method:'POST',body:JSON.stringify({message,level:opts.level||'A2',words:opts.words||[],history:opts.history||[],tts:opts.tts?1:0})}),
     wordImage: (word,prompt)=>jfetch('/api/image',{method:'POST',body:JSON.stringify({word:word,prompt:prompt||undefined})}),
     async tts(text,voice){ if(!BASE) return {offline:true}; try{ const r=await fetch(BASE+'/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,voiceId:voice||undefined})}); const ct=r.headers.get('content-type')||''; if(ct.includes('audio')) return {audio:await r.blob()}; return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
+    payStart: (email,name)=>jfetch('/api/pay/start',{method:'POST',body:JSON.stringify({email,name})}),
+    payStatus: (email)=>jfetch('/api/pay/status?email='+encodeURIComponent(email||'')),
   };
   global.KelimeAPI = API;
 })(window);
@@ -457,8 +459,21 @@ const app=document.getElementById('app'); const elifAudio=document.getElementByI
 let VOICE=null;
 function pickVoice(){const vs=(speechSynthesis.getVoices()||[]).filter(v=>/en[-_]/i.test(v.lang));const p=[/google us english/i,/natural/i,/aria/i,/samantha/i,/ava/i,/allison/i];for(const r of p){const m=vs.find(v=>r.test(v.name));if(m){VOICE=m;return;}}VOICE=vs.find(v=>/en-US/i.test(v.lang))||vs[0]||null;}
 pickVoice(); if(typeof speechSynthesis!=='undefined')speechSynthesis.onvoiceschanged=pickVoice;
-function say(t,hyp){try{if(typeof speechSynthesis==='undefined')return null;speechSynthesis.cancel();if(!VOICE)pickVoice();const u=new SpeechSynthesisUtterance(String(t));u.lang='en-US';if(VOICE)u.voice=VOICE;u.rate=hyp?0.72:0.95;u.pitch=hyp?0.85:1;try{speechSynthesis.resume();}catch(_){}setTimeout(function(){try{speechSynthesis.speak(u);}catch(e){}},50);return u;}catch(e){return null;}}
-function stopAll(){try{speechSynthesis.cancel();}catch(e){} try{elifAudio.pause();}catch(e){}}
+/* Tüm seslendirme AVATARIN sesiyle (OpenAI TTS). Tarayıcı sesi yalnızca yedek. */
+var __tutorAudio=null, __ttsMem={};
+function browserSay(t,done){ try{ if(typeof speechSynthesis==='undefined'){ if(done)done(); return; } speechSynthesis.cancel(); if(!VOICE)pickVoice(); var u=new SpeechSynthesisUtterance(String(t)); u.lang='en-US'; if(VOICE)u.voice=VOICE; u.rate=0.95; u.pitch=1; u.onend=function(){ if(done)done(); }; try{speechSynthesis.resume();}catch(_){} setTimeout(function(){try{speechSynthesis.speak(u);}catch(e){}},40);}catch(e){ if(done)done(); } }
+function tutorSpeak(text,done){ text=String(text==null?'':text); if(!text.trim()){ if(done)done(); return; }
+  var voice=(typeof avatarVoice==='function')?avatarVoice():'nova'; var key=voice+'|'+text;
+  function playUrl(url){ try{ if(__tutorAudio){try{__tutorAudio.pause();}catch(e){}} try{speechSynthesis.cancel();}catch(e){} __tutorAudio=new Audio(url); __tutorAudio.onended=function(){ if(done)done(); }; var p=__tutorAudio.play(); if(p&&p.catch)p.catch(function(){ browserSay(text,done); }); }catch(e){ browserSay(text,done); } }
+  if(API_BASE && window.KelimeAPI && KelimeAPI.tts){
+    if(__ttsMem[key]){ playUrl(__ttsMem[key]); return; }
+    KelimeAPI.tts(text,voice).then(function(r){ if(r&&r.audio){ blobToDataURL(r.audio).then(function(durl){ if(durl){ __ttsMem[key]=durl; playUrl(durl); } else browserSay(text,done); }); } else browserSay(text,done); }).catch(function(){ browserSay(text,done); });
+    return;
+  }
+  browserSay(text,done);
+}
+function say(t,hyp){ var ctl={onend:null,onboundary:null}; tutorSpeak(t,function(){ if(typeof ctl.onend==='function')ctl.onend(); }); return ctl; }
+function stopAll(){try{speechSynthesis.cancel();}catch(e){} try{elifAudio.pause();}catch(e){} try{if(__tutorAudio)__tutorAudio.pause();}catch(e){}}
 const SPKICON=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 6a8 8 0 0 1 0 12"/></svg>`;
 
 /* ================= PROFİL & İLERLEME ================= */
@@ -550,15 +565,14 @@ function playAudioUrl(url){ try{ if(__greetAudioEl){try{__greetAudioEl.pause();}
 function playGreet(){ const cached=getCachedTTS(__greetText,avatarVoice()); if(cached){ playAudioUrl(cached); return; }
   fetchGreetTTS(__greetText).then(function(url){ if(url) playAudioUrl(url); else speakGreet(); }); }
 function greetWelcome(has){ __greetText=greetText(has); const t=document.getElementById('wgTxt'); if(t)t.textContent=__greetText; __greetSpoke=false;
-  fetchGreetTTS(__greetText); /* arka planda hazırla (önbellek), ilk dokunuşta anında çalsın */
-  playGreet();
-  if(!__greetPrimed){ __greetPrimed=true; const primer=function(){ if(!__greetSpoke)playGreet(); window.removeEventListener('pointerdown',primer,true); };
-    window.addEventListener('pointerdown',primer,{once:true,capture:true}); } }
+  fetchGreetTTS(__greetText); /* arka planda hazırla (önbellek), avatara dokununca anında çalsın */
+  if(window.__greetNow){ window.__greetNow=false; playGreet(); } /* avatar yeni seçildiyse hemen selam ver */ }
 function replayGreet(){ __greetSpoke=false; if(__greetAudioEl){try{__greetAudioEl.pause();__greetAudioEl.currentTime=0;}catch(e){}} playGreet(); }
 function scrWelcome(){ stopAll(); const has=!!profile;
   app.innerHTML=`<div class="screen welcome2">
     <div class="wtop" style="display:flex;flex-direction:column;align-items:center;width:100%">
-      <div class="aikoAv">${aikoAvatarHtml()}</div>
+      <div class="aikoAv" onclick="replayGreet()" title="Dokun, seni selamlasın" style="cursor:pointer">${aikoAvatarHtml()}</div>
+      <div style="font-size:11px;color:#9b7fb8;margin-top:6px">👆 ${tutorName()}'a dokun, seni selamlasın</div>
       <button class="avlink" onclick="scrAvatars()">${curAvatarId()?('🎭 Eğitmenin: '+tutorName()+' · değiştir'):'🎭 Eğitmenini seç'}</button>
       <h1 style="margin:2px 0 2px">Kelime</h1><p class="wsub" style="margin:0 0 14px">Günde 5 kelime · İngilizceni sakince büyüt</p>
       <div class="wgreet" style="display:flex;gap:10px;align-items:center;max-width:340px;margin:0 auto 14px;background:#ffffffdd;border:1px solid #ece3da;border-radius:16px;padding:11px 13px;text-align:left;box-shadow:0 6px 18px #0000000f">
@@ -595,7 +609,7 @@ function scrAvatars(){ stopAll(); var cur=curAvatarId();
    +'<div class="avgrid">'+AVATARS.map(function(a){ return '<button class="avopt'+(a.id===cur?' sel':'')+'" onclick="chooseAvatar(\''+a.id+'\')"><img src="'+avatarURL(a.id)+'" alt="" loading="lazy" onerror="this.style.opacity=.3"><span>'+a.label+'</span></button>'; }).join('')+'</div>'
    +'</div></div>';
 }
-function chooseAvatar(id){ if(profile){ profile.avatarId=id; saveProfile(); } else { window.__pendingAvatar=id; } scrWelcome(); }
+function chooseAvatar(id){ if(profile){ profile.avatarId=id; saveProfile(); } else { window.__pendingAvatar=id; } window.__greetNow=true; scrWelcome(); }
 /* ---- GİRİŞ (başka cihaz / mevcut hesap) ---- */
 function scrLogin(){ stopAll();
   app.innerHTML=`<div class="screen">
@@ -986,14 +1000,32 @@ function scrPaywall(){ stopAll();
     <div class="big" style="font-size:44px">🔓</div>
     <h1>Denemen tamamlandı</h1>
     <p>3 günlük ücretsiz denemen bitti. Gelişimini kaydederek devam etmek için aylık üyeliğe geç.</p>
-    <div class="plan"><div><span class="price">₺149</span><span class="per"> / ay</span></div>
+    <div class="plan"><div><span class="price">₺100</span><span class="per"> / ay</span></div>
       <ul><li>Sınırsız konu ve kelime</li><li>Günlük hikâye + eğitmenin sesiyle dinleme</li><li>İlerlemen ve seviyen kayıtlı</li><li>İstediğin an iptal</li></ul></div>
     <div style="width:100%;max-width:300px;margin-top:6px"><button class="primary" onclick="subscribeNow()">Üyeliği başlat</button>
       <button class="ghost" onclick="scrDashboard()">Belki sonra</button></div>
-    <div class="subnote">Fiyat örnektir · prototip</div>
+    <div class="subnote">🔒 Güvenli ödeme · iyzico ile · istediğin an iptal</div>
   </div>`;
 }
-function subscribeNow(){ profile.subscribed=true; saveProfile(); if(pendingStart){const f=pendingStart;pendingStart=null;f();}else scrDashboard(); }
+async function subscribeNow(){
+  if(!(API_BASE && window.KelimeAPI)){ profile.subscribed=true; saveProfile(); if(pendingStart){const f=pendingStart;pendingStart=null;f();}else scrDashboard(); return; }
+  // Ödeme için e-posta gerekli (aboneliği e-postaya bağlıyoruz)
+  var email=(profile&&profile.email)||'';
+  if(!email){ email=(prompt('Üyelik için e-posta adresin:')||'').trim(); if(!email){ return; } profile.email=email; saveProfile(); }
+  var btn=document.querySelector('.paywall .primary'); if(btn){ btn.disabled=true; btn.textContent='Ödeme sayfası açılıyor…'; }
+  try{ var r=await KelimeAPI.payStart(email,(profile&&profile.name)||'');
+    if(r && r.paymentPageUrl){ window.location.href=r.paymentPageUrl; return; }
+    if(r && r.checkoutFormContent){ document.open(); document.write(r.checkoutFormContent); document.close(); return; }
+    var msg=(r&&(r.error||r.note))||'Ödeme başlatılamadı.';
+    if(btn){ btn.disabled=false; btn.textContent='Üyeliği başlat'; }
+    var sn=document.querySelector('.paywall .subnote'); if(sn)sn.textContent=msg;
+  }catch(e){ if(btn){ btn.disabled=false; btn.textContent='Üyeliği başlat'; } }
+}
+/* Ödeme dönüşü (?paid=1) → aboneliği sunucudan doğrula */
+async function checkPaidReturn(){ try{ var q=new URLSearchParams(location.search); if(q.get('paid')==null)return;
+  history.replaceState(null,'',location.pathname);
+  var email=(profile&&profile.email)||''; if(email && API_BASE && window.KelimeAPI){ var s=await KelimeAPI.payStatus(email); if(s&&s.active){ profile.subscribed=true; saveProfile(); } }
+  scrDashboard(); }catch(e){} }
 function gateStart(fn){ if(trialLocked()){ pendingStart=fn; scrPaywall(); } else fn(); }
 function startTopic(t){ currentTopic=t;
   var learned=(profile&&profile.studied&&profile.studied[t.id])||[];
@@ -1004,7 +1036,8 @@ function startTopic(t){ currentTopic=t;
   if(pool.length<1) pool=t.words.slice();
   WORDS=pool; WMAP={}; WORDS.forEach(function(d){WMAP[d.w]=d;}); startSelect(); }
 function boot(){ loadProfile(); const tok=getAuthToken(); if(tok&&window.KelimeAPI)KelimeAPI.setToken(tok); scrWelcome();
-  if(tok&&API_BASE){ syncPull().then(function(ch){ if(ch) scrWelcome(); }); } }
+  if(tok&&API_BASE){ syncPull().then(function(ch){ if(ch) scrWelcome(); }); }
+  try{ if(new URLSearchParams(location.search).get('paid')!=null) checkPaidReturn(); }catch(e){} }
 
 /* ================= 0) KONU SEÇİMİ ================= */
 function scrTopics(){ stopAll(); currentTopic=null;
@@ -1098,7 +1131,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s267</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s269</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1403,9 +1436,8 @@ async function produceS3(){ stopAll();
       <div class="panel ai"><h4>✨ Düzeltilmiş taslak</h4><div class="txt" id="imp">${cleaned.replace(/</g,'&lt;')}</div>
         ${chHtml}
         <div id="aigrade">${willAI?'<div class="diffnote">🤖 Yapay zekâ değerlendiriyor… (ilk seferde sunucu uyanırken biraz sürebilir)</div>':''}</div>
-        <div class="playrow"><button class="pbtn hyp" onclick="say(document.getElementById('imp').textContent,true)">🌙 Hipnotik dinle</button>
-          <button class="pbtn" onclick="say(document.getElementById('imp').textContent,false)">🔊 Normal dinle</button></div>
-        <div class="diffnote">${willAI?'Yapay zekâ; dilbilgisi + akıcılık için daha derin düzeltir. Ses eğitmeninin sesiyle üretilir.':'Yazım + temel dilbilgisi düzeltilir. Backend bağlanınca yapay zekâ daha derin değerlendirir.'}</div>
+        <div class="playrow"><button class="pbtn" onclick="say(document.getElementById('imp').textContent,false)">🔊 ${tutorName()} ile dinle</button></div>
+        <div class="diffnote">${willAI?'Yapay zekâ; dilbilgisi + akıcılık için daha derin düzeltir. Ses eğitmeninin sesiyle okunur.':'Yazım + temel dilbilgisi düzeltilir. Backend bağlanınca yapay zekâ daha derin değerlendirir.'}</div>
       </div>
     </div>
     <div class="footer"><button class="primary sage" onclick="scrDone()">Bugünü tamamla ✓</button>
@@ -1534,18 +1566,7 @@ function scrChat(opts){ stopAll(); primeTTS(); opts=opts||{}; const photo=opts.p
   setTimeout(chatNext, 1400);
 }
 function cav(on){ const a=document.getElementById('cav'); if(a)a.classList.toggle('talking',on); }
-function cspeak(t){ if(typeof speechSynthesis==='undefined'){ setStatusSafe('Bu tarayıcı sesi desteklemiyor — 🔊 ile dene ya da gerçek cihazda aç'); return; }
-  try{ speechSynthesis.cancel(); }catch(e){}
-  const speak=function(){ try{ if(!VOICE)pickVoice(); const u=new SpeechSynthesisUtterance(String(t).replace(/\*|_/g,'')); u.lang='en-US'; if(VOICE)u.voice=VOICE; u.rate=.96; u.pitch=1.18;
-      u.onstart=function(){cav(true);}; u.onend=function(){cav(false);};
-      u.onerror=function(){ cav(false); setStatusSafe('🔇 ses çıkmadı — "🔊 dinle"ye dokun'); };
-      try{ speechSynthesis.resume(); }catch(_){}
-      speechSynthesis.speak(u);
-    }catch(e){} };
-  // sesler henüz yüklenmediyse bir kez bekle
-  const vs=(speechSynthesis.getVoices&&speechSynthesis.getVoices())||[];
-  if(!vs.length){ setTimeout(speak,220); } else { setTimeout(speak,50); }
-}
+function cspeak(t){ cav(true); tutorSpeak(String(t).replace(/\*|_/g,''), function(){ cav(false); }); }
 function setStatusSafe(t){ const s=document.getElementById('cstatus'); if(s)s.textContent=t; }
 let ttsPrimed=false;
 function primeTTS(){ if(ttsPrimed||typeof speechSynthesis==='undefined')return; try{ speechSynthesis.resume(); const u=new SpeechSynthesisUtterance(' '); u.volume=0; speechSynthesis.speak(u); ttsPrimed=true; }catch(e){} }

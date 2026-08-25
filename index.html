@@ -461,11 +461,15 @@ let VOICE=null;
 function pickVoice(){const vs=(speechSynthesis.getVoices()||[]).filter(v=>/en[-_]/i.test(v.lang));const p=[/google us english/i,/natural/i,/aria/i,/samantha/i,/ava/i,/allison/i];for(const r of p){const m=vs.find(v=>r.test(v.name));if(m){VOICE=m;return;}}VOICE=vs.find(v=>/en-US/i.test(v.lang))||vs[0]||null;}
 pickVoice(); if(typeof speechSynthesis!=='undefined')speechSynthesis.onvoiceschanged=pickVoice;
 /* Tüm seslendirme AVATARIN sesiyle (OpenAI TTS). Tarayıcı sesi yalnızca yedek. */
-var __tutorAudio=null, __ttsMem={};
+var __tutorAudio=null, __ttsMem={}, __audioUnlocked=false;
+function tutorAudioEl(){ if(!__tutorAudio){ __tutorAudio=new Audio(); try{__tutorAudio.setAttribute('playsinline','');}catch(e){} } return __tutorAudio; }
+/* iOS otomatik oynatmayı engeller: ilk dokunuşta tek ses elementini "aç", sonra hep onu kullan → sonraki oynatmalar (sohbet vb.) çalışır. */
+function unlockTutorAudio(){ if(__audioUnlocked)return; try{ var a=tutorAudioEl(); a.muted=true; var p=a.play(); if(p&&p.then){ p.then(function(){ try{a.pause();a.currentTime=0;}catch(e){} a.muted=false; __audioUnlocked=true; }).catch(function(){ a.muted=false; }); } else { __audioUnlocked=true; } }catch(e){} }
+try{ window.addEventListener('pointerdown',unlockTutorAudio,{capture:true}); window.addEventListener('touchstart',unlockTutorAudio,{capture:true}); }catch(e){}
 function browserSay(t,done){ try{ if(typeof speechSynthesis==='undefined'){ if(done)done(); return; } speechSynthesis.cancel(); if(!VOICE)pickVoice(); var u=new SpeechSynthesisUtterance(String(t)); u.lang='en-US'; if(VOICE)u.voice=VOICE; u.rate=0.95; u.pitch=1; u.onend=function(){ if(done)done(); }; try{speechSynthesis.resume();}catch(_){} setTimeout(function(){try{speechSynthesis.speak(u);}catch(e){}},40);}catch(e){ if(done)done(); } }
 function tutorSpeak(text,done){ text=String(text==null?'':text); if(!text.trim()){ if(done)done(); return; }
   var voice=(typeof avatarVoice==='function')?avatarVoice():'nova'; var key=voice+'|'+text;
-  function playUrl(url){ try{ if(__tutorAudio){try{__tutorAudio.pause();}catch(e){}} try{speechSynthesis.cancel();}catch(e){} __tutorAudio=new Audio(url); __tutorAudio.onended=function(){ if(done)done(); }; var p=__tutorAudio.play(); if(p&&p.catch)p.catch(function(){ browserSay(text,done); }); }catch(e){ browserSay(text,done); } }
+  function playUrl(url){ try{ try{speechSynthesis.cancel();}catch(e){} var a=tutorAudioEl(); try{a.pause();}catch(e){} a.onended=function(){ if(done)done(); }; a.muted=false; a.src=url; var p=a.play(); if(p&&p.catch)p.catch(function(){ browserSay(text,done); }); }catch(e){ browserSay(text,done); } }
   if(API_BASE && window.KelimeAPI && KelimeAPI.tts){
     if(__ttsMem[key]){ playUrl(__ttsMem[key]); return; }
     KelimeAPI.tts(text,voice).then(function(r){ if(r&&r.audio){ blobToDataURL(r.audio).then(function(durl){ if(durl){ __ttsMem[key]=durl; playUrl(durl); } else browserSay(text,done); }); } else browserSay(text,done); }).catch(function(){ browserSay(text,done); });
@@ -473,6 +477,8 @@ function tutorSpeak(text,done){ text=String(text==null?'':text); if(!text.trim()
   }
   browserSay(text,done);
 }
+function tutorIsPlaying(){ try{ return !!(__tutorAudio && !__tutorAudio.paused && !__tutorAudio.ended && __tutorAudio.src); }catch(e){ return false; } }
+function tutorPauseResume(){ try{ var a=__tutorAudio; if(!a||!a.src)return 'none'; if(!a.paused){ a.pause(); return 'paused'; } var p=a.play(); if(p&&p.catch)p.catch(function(){}); return 'playing'; }catch(e){ return 'none'; } }
 function say(t,hyp){ var ctl={onend:null,onboundary:null}; tutorSpeak(t,function(){ if(typeof ctl.onend==='function')ctl.onend(); }); return ctl; }
 function stopAll(){try{speechSynthesis.cancel();}catch(e){} try{elifAudio.pause();}catch(e){} try{if(__tutorAudio)__tutorAudio.pause();}catch(e){}}
 const SPKICON=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 6a8 8 0 0 1 0 12"/></svg>`;
@@ -1003,15 +1009,20 @@ function scrPaywall(){ stopAll();
     <p>3 günlük ücretsiz denemen bitti. Gelişimini kaydederek devam etmek için aylık üyeliğe geç.</p>
     <div class="plan"><div><span class="price">₺100</span><span class="per"> / ay</span></div>
       <ul><li>Sınırsız konu ve kelime</li><li>Günlük hikâye + eğitmenin sesiyle dinleme</li><li>İlerlemen ve seviyen kayıtlı</li><li>İstediğin an iptal</li></ul></div>
+    <label style="display:flex;gap:8px;align-items:flex-start;max-width:320px;margin:14px auto 4px;font-size:12px;color:#6a5a52;text-align:left;cursor:pointer">
+      <input type="checkbox" id="paySoz" style="margin-top:2px">
+      <span><a href="mesafeli-satis.html" target="_blank">Mesafeli Satış Sözleşmesi</a>'ni, <a href="iptal-iade.html" target="_blank">İptal/İade Koşulları</a>'nı ve <a href="gizlilik.html" target="_blank">Gizlilik/KVKK</a> metnini okudum, kabul ediyorum.</span>
+    </label>
     <div style="width:100%;max-width:300px;margin-top:6px"><button class="primary" onclick="subscribeNow()">Üyeliği başlat</button>
       <button class="ghost" onclick="scrDashboard()">Belki sonra</button></div>
-    <div class="subnote">🔒 Güvenli ödeme · iyzico ile · istediğin an iptal</div>
+    <div class="subnote">🔒 Güvenli ödeme · iyzico ile · istediğin an iptal · <a href="iletisim.html" target="_blank" style="color:inherit">İletişim</a></div>
   </div>`;
 }
 async function cancelSub(){ var email=(profile&&profile.email)||''; if(!email||!(API_BASE&&window.KelimeAPI))return;
   if(!confirm('Üyeliğini iptal etmek istediğine emin misin? Dönem sonuna kadar erişimin sürer.'))return;
   try{ var r=await KelimeAPI.payCancel(email); if(r&&r.cancelled){ profile.subscribed=false; saveProfile(); alert('Üyeliğin iptal edildi.'); scrDashboard(); } else { alert((r&&(r.error||r.note))||'İptal edilemedi.'); } }catch(e){ alert('İptal edilemedi.'); } }
 async function subscribeNow(){
+  var soz=document.getElementById('paySoz'); if(soz && !soz.checked){ alert('Devam etmek için sözleşmeleri onaylaman gerekiyor.'); return; }
   if(!(API_BASE && window.KelimeAPI)){ profile.subscribed=true; saveProfile(); if(pendingStart){const f=pendingStart;pendingStart=null;f();}else scrDashboard(); return; }
   // Ödeme için e-posta gerekli (aboneliği e-postaya bağlıyoruz)
   var email=(profile&&profile.email)||'';
@@ -1135,7 +1146,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s270</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s272</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1541,7 +1552,8 @@ function scrChat(opts){ stopAll(); primeTTS(); opts=opts||{}; const photo=opts.p
     <div class="chdr"><button class="back" onclick="${photo?'scrPhoto()':'scrDashboard()'}">‹</button>
       <div class="cav" id="cav">${aikoAvatarHtml()}</div>
       <div style="flex:1"><div class="cav-name">${tutorName()} 🌸</div><div class="cav-sub" id="cstatus">${photo?'fotoğrafın üzerine konuşuyoruz':'çevrimiçi · eğitmenin'}</div></div>
-      ${photo?`<img class="photothumb" src="${photo}" alt="">`:'<span class="phase">Konuşma</span>'}</div>
+      <button id="cpp" onclick="chatPlayPause()" title="Duraklat / devam" style="flex:none;width:40px;height:40px;border-radius:50%;border:none;background:#efe2fb;font-size:17px;cursor:pointer">▶</button>
+      ${photo?`<img class="photothumb" src="${photo}" alt="" style="margin-left:6px">`:''}</div>
     ${photo?'<div class="cwbar" id="cwbar" style="color:var(--muted);font-size:12px">📷 Gördüklerini İngilizce anlat</div>':`<div class="cwbar" id="cwbar">${chatWords.map(function(w){return `<span class="cwchip" data-w="${w}">${w}</span>`;}).join('')}</div>`}
     <div class="cchat" id="cchat"></div>
     <div class="ccomp">
@@ -1570,7 +1582,13 @@ function scrChat(opts){ stopAll(); primeTTS(); opts=opts||{}; const photo=opts.p
   setTimeout(chatNext, 1400);
 }
 function cav(on){ const a=document.getElementById('cav'); if(a)a.classList.toggle('talking',on); }
-function cspeak(t){ cav(true); tutorSpeak(String(t).replace(/\*|_/g,''), function(){ cav(false); }); }
+function cspeak(t){ window.__lastBot=t; cav(true); var b=document.getElementById('cpp'); if(b)b.textContent='⏸'; tutorSpeak(String(t).replace(/\*|_/g,''), function(){ cav(false); var b2=document.getElementById('cpp'); if(b2)b2.textContent='▶'; }); }
+/* Tek tuş: konuşuyorsa duraklat, duraklamışsa devam, hiç yoksa son mesajı seslendir. */
+function chatPlayPause(){ var b=document.getElementById('cpp');
+  var st=tutorPauseResume();
+  if(st==='paused'){ if(b)b.textContent='▶'; return; }
+  if(st==='playing'){ if(b)b.textContent='⏸'; return; }
+  if(window.__lastBot){ cspeak(window.__lastBot); } }
 function setStatusSafe(t){ const s=document.getElementById('cstatus'); if(s)s.textContent=t; }
 let ttsPrimed=false;
 function primeTTS(){ if(ttsPrimed||typeof speechSynthesis==='undefined')return; try{ speechSynthesis.resume(); const u=new SpeechSynthesisUtterance(' '); u.volume=0; speechSynthesis.speak(u); ttsPrimed=true; }catch(e){} }
@@ -1883,7 +1901,7 @@ function attachSwipe(card,onLeft,onRight){
 }
 
 Object.assign(window,{scrTopics,pickTopic,startSelect,selDecide,toggleHide,toggleSave,cardGo,setMode,toggleNormal,toggleElif,openSheet,closeSheet,sheetSave,say,scrProduce,p1skip,p1next,bankTap,produceS1,produceS2,produceS3,scrDone,
-  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar,cancelSub});
+  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar,cancelSub,chatPlayPause});
 boot();
 </script>
 </body>

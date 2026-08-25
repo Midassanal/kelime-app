@@ -288,6 +288,7 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
     async tts(text,voice){ if(!BASE) return {offline:true}; try{ const r=await fetch(BASE+'/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,voiceId:voice||undefined})}); const ct=r.headers.get('content-type')||''; if(ct.includes('audio')) return {audio:await r.blob()}; return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
     payStart: (email,name)=>jfetch('/api/pay/start',{method:'POST',body:JSON.stringify({email,name})}),
     payStatus: (email)=>jfetch('/api/pay/status?email='+encodeURIComponent(email||'')),
+    payCancel: (email)=>jfetch('/api/pay/cancel',{method:'POST',body:JSON.stringify({email})}),
   };
   global.KelimeAPI = API;
 })(window);
@@ -965,7 +966,7 @@ function scrDashboard(){ stopAll(); if(!profile)return scrWelcome();
   const tids=Object.keys(profile.studied||{}).filter(k=>profile.studied[k].length);
   const total=tids.reduce((a,k)=>a+profile.studied[k].length,0);
   let banner;
-  if(profile.subscribed) banner=`<div class="tbanner ok"><span>✓ Üyeliğin aktif</span></div>`;
+  if(profile.subscribed) banner=`<div class="tbanner ok"><span>✓ Üyeliğin aktif</span>${(API_BASE&&profile.email)?`<button onclick="cancelSub()" style="background:none;border:none;color:#a06a5e;font-size:12px;text-decoration:underline;cursor:pointer">İptal et</button>`:''}</div>`;
   else if(locked) banner=`<div class="tbanner lock"><span>Deneme süren doldu</span><button onclick="scrPaywall()">Üyelikle devam</button></div>`;
   else banner=`<div class="tbanner warn"><span>Ücretsiz deneme · ${Math.min(dn,TRIAL_DAYS)}/${TRIAL_DAYS}. gün</span><button onclick="scrPaywall()">Üyelik</button></div>`;
   const last=profile.lastTopicId?TOPICS.find(t=>t.id===profile.lastTopicId):null;
@@ -1007,6 +1008,9 @@ function scrPaywall(){ stopAll();
     <div class="subnote">🔒 Güvenli ödeme · iyzico ile · istediğin an iptal</div>
   </div>`;
 }
+async function cancelSub(){ var email=(profile&&profile.email)||''; if(!email||!(API_BASE&&window.KelimeAPI))return;
+  if(!confirm('Üyeliğini iptal etmek istediğine emin misin? Dönem sonuna kadar erişimin sürer.'))return;
+  try{ var r=await KelimeAPI.payCancel(email); if(r&&r.cancelled){ profile.subscribed=false; saveProfile(); alert('Üyeliğin iptal edildi.'); scrDashboard(); } else { alert((r&&(r.error||r.note))||'İptal edilemedi.'); } }catch(e){ alert('İptal edilemedi.'); } }
 async function subscribeNow(){
   if(!(API_BASE && window.KelimeAPI)){ profile.subscribed=true; saveProfile(); if(pendingStart){const f=pendingStart;pendingStart=null;f();}else scrDashboard(); return; }
   // Ödeme için e-posta gerekli (aboneliği e-postaya bağlıyoruz)
@@ -1015,7 +1019,7 @@ async function subscribeNow(){
   var btn=document.querySelector('.paywall .primary'); if(btn){ btn.disabled=true; btn.textContent='Ödeme sayfası açılıyor…'; }
   try{ var r=await KelimeAPI.payStart(email,(profile&&profile.name)||'');
     if(r && r.paymentPageUrl){ window.location.href=r.paymentPageUrl; return; }
-    if(r && r.checkoutFormContent){ document.open(); document.write(r.checkoutFormContent); document.close(); return; }
+    if(r && r.checkoutFormContent){ document.open(); document.write('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Üyelik ödemesi</title></head><body style="margin:0;padding:16px;font-family:system-ui;background:#fbf6f1"><h3 style="text-align:center;color:#7a5a52">Kelime · Aylık Üyelik ₺100</h3><div id="iyzipay-checkout-form" class="responsive"></div>'+r.checkoutFormContent+'</body></html>'); document.close(); return; }
     var msg=(r&&(r.error||r.note))||'Ödeme başlatılamadı.';
     if(btn){ btn.disabled=false; btn.textContent='Üyeliği başlat'; }
     var sn=document.querySelector('.paywall .subnote'); if(sn)sn.textContent=msg;
@@ -1131,7 +1135,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s269</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s270</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1879,7 +1883,7 @@ function attachSwipe(card,onLeft,onRight){
 }
 
 Object.assign(window,{scrTopics,pickTopic,startSelect,selDecide,toggleHide,toggleSave,cardGo,setMode,toggleNormal,toggleElif,openSheet,closeSheet,sheetSave,say,scrProduce,p1skip,p1next,bankTap,produceS1,produceS2,produceS3,scrDone,
-  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar});
+  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar,cancelSub});
 boot();
 </script>
 </body>

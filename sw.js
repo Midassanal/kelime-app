@@ -1,8 +1,8 @@
-/* Kelime PWA service worker — çevrimdışı açılış + hızlı yükleme.
+/* Parlo PWA service worker — çevrimdışı açılış + hızlı yükleme.
    Uygulama kabuğu (index.html, ikonlar, yasal sayfalar) önbelleğe alınır.
    Gezinme (navigate) ağ-öncelikli: çevrimiçiyken hep en yeni sürüm gelir,
    çevrimdışıyken önbellekten açılır. Backend/API ve /img (farklı origin) dokunulmaz. */
-const CACHE = 'kelime-v1';
+const CACHE = 'parlo-v2';
 const ASSETS = [
   './', './index.html', './manifest.json',
   './icon-192.png', './icon-512.png', './icon-180.png', './icon-32.png',

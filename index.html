@@ -6,12 +6,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Kelime">
+<meta name="apple-mobile-web-app-title" content="Parlo">
 <meta name="theme-color" content="#f0e2db">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" type="image/png" href="icon-32.png">
-<title>Kelime · İngilizce Öğren</title>
+<title>Parlo · İngilizce Öğren</title>
 <style>
   :root{
     --bg:#f0e2db; --phone:#f7ebe5; --card:#fffcfa; --ink:#4c403b; --muted:#a8968d; --line:#ecd7ce;
@@ -518,8 +518,14 @@ function fmtDate(iso){ try{return new Date(iso).toLocaleDateString('tr-TR',{day:
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function recordKnown(w){ if(!profile||!currentTopic)return; const t=currentTopic.id; profile.known=profile.known||{}; profile.known[t]=profile.known[t]||[]; if(profile.known[t].indexOf(w)<0){ profile.known[t].push(w); saveProfile(); } }
 function recordProgress(){ if(!profile||!currentTopic)return; const t=currentTopic.id; profile.studied=profile.studied||{}; profile.studied[t]=profile.studied[t]||[];
-  roster.forEach(d=>{if(!profile.studied[t].includes(d.w))profile.studied[t].push(d.w); enterSRS(d.w,t,d.lvl);}); profile.lastTopicId=t;
+  var addedNew=0; roster.forEach(d=>{if(!profile.studied[t].includes(d.w)){profile.studied[t].push(d.w);addedNew++;} enterSRS(d.w,t,d.lvl);}); profile.lastTopicId=t;
+  if(t!=='custom') newTodayAdd(addedNew); // fotoğraf/içe aktarma günlük sınıra dahil değil
   profile.daysActive=profile.daysActive||[]; const ds=todayStr(); if(!profile.daysActive.includes(ds))profile.daysActive.push(ds); saveProfile(); }
+/* ===== Günlük yeni kelime sınırı (günde en çok 15 yeni) ===== */
+const DAILY_NEW_CAP=15;
+function newTodayCount(){ if(!profile)return 0; var n=profile.newToday; if(!n||n.d!==todayStr())return 0; return n.count||0; }
+function newTodayAdd(k){ if(!profile||!k)return; var t=todayStr(); if(!profile.newToday||profile.newToday.d!==t)profile.newToday={d:t,count:0}; profile.newToday.count+=k; }
+function newCapReached(){ return newTodayCount()>=DAILY_NEW_CAP; }
 
 /* ================= ARALIKLI TEKRAR (Leitner) ================= */
 /* Her kelimenin bir "kutusu" (1-5) ve tekrar günü var. Doğru → kutu yükselir, aralık uzar. Yanlış → kutu 1. */
@@ -600,7 +606,7 @@ function scrWelcome(){ stopAll(); const has=!!profile;
       <div class="aikoAv" onclick="avatarTap()" title="Dokun" style="cursor:pointer">${aikoAvatarHtml()}</div>
       <div style="font-size:11px;color:#9b7fb8;margin-top:6px">${curAvatarId()?('👆 '+tutorName()+'\'a dokun, seni selamlasın'):'👆 Önce avatarını seç'}</div>
       <button class="avlink" onclick="scrAvatars()">${curAvatarId()?('🎭 Avatarın: '+tutorName()+' · değiştir'):'🎭 Avatarını seç'}</button>
-      <h1 style="margin:2px 0 2px">Kelime</h1><p class="wsub" style="margin:0 0 14px">Günde 5 kelime · İngilizceni sakince büyüt</p>
+      <h1 style="margin:2px 0 2px">Parlo</h1><p class="wsub" style="margin:0 0 14px">Günde 15 kelime · İngilizceni sakince büyüt</p>
       <div class="wgreet" style="display:flex;gap:10px;align-items:center;max-width:340px;margin:0 auto 14px;background:#ffffffdd;border:1px solid #ece3da;border-radius:16px;padding:11px 13px;text-align:left;box-shadow:0 6px 18px #0000000f">
         <button id="wgPlay" onclick="replayGreet()" aria-label="Tekrar dinle" style="flex:none;width:42px;height:42px;border-radius:50%;border:none;background:linear-gradient(135deg,#efe2fb,#e3d3f6);font-size:18px;cursor:pointer;box-shadow:0 2px 8px #b79bd340">🔊</button>
         <div style="flex:1"><div style="font-size:10.5px;font-weight:700;color:#9b7fb8;letter-spacing:.04em;margin-bottom:1px">${tutorName().toLocaleUpperCase('tr')}</div><p id="wgTxt" style="margin:0;font-size:12.5px;line-height:1.42;color:#5a4a42"></p></div>
@@ -1054,7 +1060,7 @@ async function subscribeNow(){
   var btn=document.querySelector('.paywall .primary'); if(btn){ btn.disabled=true; btn.textContent='Ödeme sayfası açılıyor…'; }
   try{ var r=await KelimeAPI.payStart(email,(profile&&profile.name)||'');
     if(r && r.paymentPageUrl){ window.location.href=r.paymentPageUrl; return; }
-    if(r && r.checkoutFormContent){ document.open(); document.write('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Üyelik ödemesi</title></head><body style="margin:0;padding:16px;font-family:system-ui;background:#fbf6f1"><h3 style="text-align:center;color:#7a5a52">Kelime · Aylık Üyelik ₺100</h3><div id="iyzipay-checkout-form" class="responsive"></div>'+r.checkoutFormContent+'</body></html>'); document.close(); return; }
+    if(r && r.checkoutFormContent){ document.open(); document.write('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Üyelik ödemesi</title></head><body style="margin:0;padding:16px;font-family:system-ui;background:#fbf6f1"><h3 style="text-align:center;color:#7a5a52">Parlo · Aylık Üyelik ₺100</h3><div id="iyzipay-checkout-form" class="responsive"></div>'+r.checkoutFormContent+'</body></html>'); document.close(); return; }
     var msg=(r&&(r.error||r.note))||'Ödeme başlatılamadı.';
     if(btn){ btn.disabled=false; btn.textContent='Üyeliği başlat'; }
     var sn=document.querySelector('.paywall .subnote'); if(sn)sn.textContent=msg;
@@ -1066,7 +1072,7 @@ async function checkPaidReturn(){ try{ var q=new URLSearchParams(location.search
   var email=(profile&&profile.email)||''; if(email && API_BASE && window.KelimeAPI){ var s=await KelimeAPI.payStatus(email); if(s&&s.active){ profile.subscribed=true; saveProfile(); } }
   scrDashboard(); }catch(e){} }
 function gateStart(fn){ if(trialLocked()){ pendingStart=fn; scrPaywall(); } else fn(); }
-function startTopic(t){ currentTopic=t;
+function startTopic(t){ if(t&&t.id!=='custom'&&newCapReached()){ return scrDailyCap(); } currentTopic=t;
   var learned=(profile&&profile.studied&&profile.studied[t.id])||[];
   var known=(profile&&profile.known&&profile.known[t.id])||[];
   var skip=learned.concat(known);
@@ -1174,7 +1180,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s277</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s278</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1555,6 +1561,13 @@ function scrReviewEmpty(){ stopAll();
   app.innerHTML=`<div class="screen done"><div class="big">🌿</div><h2>Tekrar yok</h2>
     <p>Şu an tekrar zamanı gelen kelime yok. Yeni kelimeler çalıştıkça burada birikip doğru zamanda karşına çıkacak.</p>
     <div style="margin-top:auto;width:100%"><button class="primary" onclick="scrDashboard()">Panele dön →</button></div>
+  </div>`;
+}
+/* Günlük 15 yeni kelime tamamlandı → yeni kelime açma, tekrara yönlendir. */
+function scrDailyCap(){ stopAll(); var n=(typeof dueCount==='function')?dueCount():0;
+  app.innerHTML=`<div class="screen done"><div class="big">🎉</div><h2>Bugünlük yeni kelimeler tamam</h2>
+    <p>Bugün <b>${DAILY_NEW_CAP}</b> yeni kelime çalıştın — harika iş! Beyin bir günde bu kadarını sağlam öğrenir, gerisini uyku ve tekrar pekiştirir. Yarın yeni ${DAILY_NEW_CAP} kelime açılacak. ${n>0?'Dilersen bugün öğrendiklerini şimdi tekrar edebilirsin.':'İstersen önceki kelimelerini tekrar edebilirsin.'}</p>
+    <div style="margin-top:auto;width:100%">${n>0?`<button class="primary" onclick="scrReview()">🔁 Tekrar et (${n}) →</button><button class="ghost" style="margin-top:8px" onclick="scrDashboard()">Panele dön</button>`:`<button class="primary" onclick="scrDashboard()">Panele dön →</button>`}</div>
   </div>`;
 }
 function srsCardHtml(){ if(!profile)return ''; seedSRS(); var n=dueCount();

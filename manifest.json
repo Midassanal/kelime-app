@@ -1,7 +1,7 @@
 {
-  "name": "Kelime — İngilizce Öğren",
-  "short_name": "Kelime",
-  "description": "Günde 5 kelime ile İngilizceni sakince büyüt: görseller, seslendirme, seviye testi ve akıllı tekrar.",
+  "name": "Parlo — İngilizce Öğren",
+  "short_name": "Parlo",
+  "description": "Günde 15 kelime ile İngilizceni sakince büyüt: görseller, seslendirme, seviye testi ve akıllı tekrar.",
   "lang": "tr",
   "dir": "ltr",
   "start_url": "./?src=pwa",

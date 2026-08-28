@@ -293,7 +293,7 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
     generateStory: (words,level,tts=false)=>jfetch('/api/story/generate',{method:'POST',body:JSON.stringify({words,level,tts})}),
     chatTurn: (message,opts={})=>jfetch('/api/chat/turn',{method:'POST',body:JSON.stringify({message,level:opts.level||'A2',words:opts.words||[],history:opts.history||[],tts:opts.tts?1:0})}),
     wordImage: (word,prompt)=>jfetch('/api/image',{method:'POST',body:JSON.stringify({word:word,prompt:prompt||undefined})}),
-    async tts(text,voice){ if(!BASE) return {offline:true}; try{ const r=await fetch(BASE+'/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,voiceId:voice||undefined})}); const ct=r.headers.get('content-type')||''; if(ct.includes('audio')) return {audio:await r.blob()}; return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
+    async tts(text,voice,instructions){ if(!BASE) return {offline:true}; try{ const h={'Content-Type':'application/json'}; if(TOKEN)h.Authorization='Bearer '+TOKEN; const r=await fetch(BASE+'/api/tts',{method:'POST',headers:h,body:JSON.stringify({text,voiceId:voice||undefined,instructions:instructions||undefined})}); const ct=r.headers.get('content-type')||''; if(ct.includes('audio')) return {audio:await r.blob()}; return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
     payStart: (email,name)=>jfetch('/api/pay/start',{method:'POST',body:JSON.stringify({email,name})}),
     payStatus: (email)=>jfetch('/api/pay/status?email='+encodeURIComponent(email||'')),
     payCancel: (email)=>jfetch('/api/pay/cancel',{method:'POST',body:JSON.stringify({email})}),
@@ -480,7 +480,7 @@ function tutorSpeak(text,done){ text=String(text==null?'':text); if(!text.trim()
   function playUrl(url){ try{ try{speechSynthesis.cancel();}catch(e){} var a=tutorAudioEl(); try{a.pause();}catch(e){} a.onended=function(){ if(done)done(); }; a.muted=false; a.src=url; var p=a.play(); if(p&&p.catch)p.catch(function(){ browserSay(text,done); }); }catch(e){ browserSay(text,done); } }
   if(API_BASE && window.KelimeAPI && KelimeAPI.tts){
     if(__ttsMem[key]){ playUrl(__ttsMem[key]); return; }
-    KelimeAPI.tts(text,voice).then(function(r){ if(r&&r.audio){ blobToDataURL(r.audio).then(function(durl){ if(durl){ __ttsMem[key]=durl; playUrl(durl); } else browserSay(text,done); }); } else browserSay(text,done); }).catch(function(){ browserSay(text,done); });
+    KelimeAPI.tts(text,voice,(typeof avatarStyle==='function')?avatarStyle():undefined).then(function(r){ if(r&&r.audio){ blobToDataURL(r.audio).then(function(durl){ if(durl){ __ttsMem[key]=durl; playUrl(durl); } else browserSay(text,done); }); } else browserSay(text,done); }).catch(function(){ browserSay(text,done); });
     return;
   }
   browserSay(text,done);
@@ -547,10 +547,20 @@ function srsAnswer(w,correct){ if(!profile)return; var m=srsMap(); var k=String(
 /* ==== Sesli karşılama (Aiko) ==== */
 let __ttsVoice=null,__greetText='',__greetSpoke=false,__greetPrimed=false;
 /* Seçili avatarın OpenAI sesi (kadın/erkek + her biri farklı) ve cinsiyeti */
-function avatarVoice(){ var id=curAvatarId(); var m={f1:'coral',f2:'shimmer',f3:'nova',m1:'onyx',m2:'ash',m3:'echo'}; return m[id]||'nova'; }
+function avatarVoice(){ var id=curAvatarId(); var m={f1:'coral',f2:'shimmer',f3:'sage',m1:'verse',m2:'ballad',m3:'ash'}; return m[id]||'coral'; }
+/* Her avatara kendine özgü, COŞKULU bir anlatım tarzı (backend'e talimat olarak gönderilir). */
+function avatarStyle(){ var id=curAvatarId();
+  var base='Speak in the SAME LANGUAGE as the text — never translate or switch language. HIGH energy, upbeat, cheerful and motivating, like an excited coach who truly believes in the learner. Clearly vary your pitch and pace, smile through your voice, and put strong emphasis on key words. Never flat, monotone, sleepy or robotic. ';
+  var f={ f1:'Character: playful, bubbly and joyful, full of fun and warmth.',
+          f2:'Character: bright, sweet and bursting with excitement and positivity.',
+          f3:'Character: warm and caring but lively, gently hyping the learner up.',
+          m1:'Character: a confident, hyped young coach pumping the learner up with big enthusiasm.',
+          m2:'Character: a friendly, animated and cheerful buddy, laughing and encouraging.',
+          m3:'Character: a cool, energetic and motivating friend, upbeat and punchy.' };
+  return base + (f[id] || 'Character: a warm, energetic and encouraging tutor.'); }
 function avatarGender(){ var id=curAvatarId(); return (id&&String(id).charAt(0)==='m')?'m':'f'; }
-/* Seçili eğitmenin adı (avatar seçilmemişse varsayılan 'Aiko') */
-function tutorName(){ var id=curAvatarId(); try{ var a=AVATARS.filter(function(x){return x.id===id;})[0]; return a?a.label:'Aiko'; }catch(e){ return 'Aiko'; } }
+/* Seçili avatarın adı (avatar seçilmemişse 'Avatar' — kullanıcı seçince adı gelir) */
+function tutorName(){ var id=curAvatarId(); try{ var a=AVATARS.filter(function(x){return x.id===id;})[0]; return a?a.label:'Avatar'; }catch(e){ return 'Avatar'; } }
 function pickTRVoice(male){ try{ const vs=(window.speechSynthesis&&speechSynthesis.getVoices())||[]; const tr=vs.filter(x=>/^tr(-|_|$)/i.test(x.lang||'')); if(!tr.length)return null;
   const score=function(v){ const n=(v.name||'').toLowerCase(); let s=0; if(/enhanced|premium|natural|neural|gelişmiş/.test(n))s+=6; if(/google/.test(n))s+=3; if(v.localService)s+=1;
     if(male){ if(/erkek|male|\bman\b|mehmet|ahmet|emre|barış|baris|onur|volkan|tolga/.test(n))s+=4; }
@@ -565,13 +575,13 @@ function greetText(has){ if(has&&profile&&profile.name) return 'Merhaba '+profil
 /* Gerçek Aiko sesi: backend (OpenAI TTS) → mp3; önbelleğe alınır, olmazsa tarayıcı sesi */
 let __greetAudioEl=null;
 function blobToDataURL(b){ return new Promise(function(res){ try{ const fr=new FileReader(); fr.onload=function(){res(fr.result);}; fr.onerror=function(){res(null);}; fr.readAsDataURL(b);}catch(e){res(null);} }); }
-var TTSVER='v2'; /* talimat/ses değişince eski önbelleği geçersiz kıl */
+var TTSVER='v3'; /* talimat/ses değişince eski önbelleği geçersiz kıl */
 function ttsCacheKey(t,v){ var s=(t||'')+'|'+(v||'')+'|'+TTSVER; let h=0; for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0; return 'kelimeApp.tts.'+h; }
 function getCachedTTS(t,v){ try{ return localStorage.getItem(ttsCacheKey(t,v)); }catch(e){ return null; } }
 async function fetchGreetTTS(text){ var voice=avatarVoice();
   const cached=getCachedTTS(text,voice); if(cached) return cached;
   if(!(window.KelimeAPI&&API_BASE)) return null;
-  try{ const r=await KelimeAPI.tts(text,voice);
+  try{ const r=await KelimeAPI.tts(text,voice,(typeof avatarStyle==='function')?avatarStyle():undefined);
     if(r&&r.audio){ const durl=await blobToDataURL(r.audio); if(durl){ try{localStorage.setItem(ttsCacheKey(text,voice),durl);}catch(e){} return durl; } }
   }catch(e){}
   return null;
@@ -583,12 +593,13 @@ function greetWelcome(has){ __greetText=greetText(has); const t=document.getElem
   fetchGreetTTS(__greetText); /* arka planda hazırla (önbellek), avatara dokununca anında çalsın */
   if(window.__greetNow){ window.__greetNow=false; playGreet(); } /* avatar yeni seçildiyse hemen selam ver */ }
 function replayGreet(){ __greetSpoke=false; if(__greetAudioEl){try{__greetAudioEl.pause();__greetAudioEl.currentTime=0;}catch(e){}} playGreet(); }
+function avatarTap(){ if(!curAvatarId()){ scrAvatars(); return; } replayGreet(); }
 function scrWelcome(){ stopAll(); const has=!!profile;
   app.innerHTML=`<div class="screen welcome2">
     <div class="wtop" style="display:flex;flex-direction:column;align-items:center;width:100%">
-      <div class="aikoAv" onclick="replayGreet()" title="Dokun, seni selamlasın" style="cursor:pointer">${aikoAvatarHtml()}</div>
-      <div style="font-size:11px;color:#9b7fb8;margin-top:6px">👆 ${tutorName()}'a dokun, seni selamlasın</div>
-      <button class="avlink" onclick="scrAvatars()">${curAvatarId()?('🎭 Eğitmenin: '+tutorName()+' · değiştir'):'🎭 Eğitmenini seç'}</button>
+      <div class="aikoAv" onclick="avatarTap()" title="Dokun" style="cursor:pointer">${aikoAvatarHtml()}</div>
+      <div style="font-size:11px;color:#9b7fb8;margin-top:6px">${curAvatarId()?('👆 '+tutorName()+'\'a dokun, seni selamlasın'):'👆 Önce avatarını seç'}</div>
+      <button class="avlink" onclick="scrAvatars()">${curAvatarId()?('🎭 Avatarın: '+tutorName()+' · değiştir'):'🎭 Avatarını seç'}</button>
       <h1 style="margin:2px 0 2px">Kelime</h1><p class="wsub" style="margin:0 0 14px">Günde 5 kelime · İngilizceni sakince büyüt</p>
       <div class="wgreet" style="display:flex;gap:10px;align-items:center;max-width:340px;margin:0 auto 14px;background:#ffffffdd;border:1px solid #ece3da;border-radius:16px;padding:11px 13px;text-align:left;box-shadow:0 6px 18px #0000000f">
         <button id="wgPlay" onclick="replayGreet()" aria-label="Tekrar dinle" style="flex:none;width:42px;height:42px;border-radius:50%;border:none;background:linear-gradient(135deg,#efe2fb,#e3d3f6);font-size:18px;cursor:pointer;box-shadow:0 2px 8px #b79bd340">🔊</button>
@@ -619,8 +630,8 @@ function curAvatarId(){ return (profile&&profile.avatarId)||window.__pendingAvat
 function aikoAvatarHtml(){ var id=curAvatarId(); if(id) return '<img class="avimg" src="'+avatarURL(id)+'" alt="" onerror="this.remove()">'; return AIKO_SVG; }
 function scrAvatars(){ stopAll(); var cur=curAvatarId();
   app.innerHTML='<div class="screen">'
-   +'<div class="hdr"><button class="back" onclick="scrWelcome()">‹ Geri</button><span class="phase">Eğitmenini seç</span></div>'
-   +'<div class="content"><div class="welcome" style="margin-bottom:6px"><h1 style="font-size:22px">Eğitmenini seç 🌸</h1><p>Sana birebir eşlik edecek eğitmenini seç. Tüm derslerinde yanında olacak; istediğin zaman değiştirebilirsin.</p></div>'
+   +'<div class="hdr"><button class="back" onclick="scrWelcome()">‹ Geri</button><span class="phase">Avatarını seç</span></div>'
+   +'<div class="content"><div class="welcome" style="margin-bottom:6px"><h1 style="font-size:22px">Avatarını seç 🌸</h1><p>Sana birebir eşlik edecek avatarını seç. Her açtığında seninle o ilerler; adını ve sesini kullanır. İstediğin zaman değiştirebilirsin.</p></div>'
    +'<div class="avgrid">'+AVATARS.map(function(a){ return '<button class="avopt'+(a.id===cur?' sel':'')+'" onclick="chooseAvatar(\''+a.id+'\')"><img src="'+avatarURL(a.id)+'" alt="" loading="lazy" onerror="this.style.opacity=.3"><span>'+a.label+'</span></button>'; }).join('')+'</div>'
    +'</div></div>';
 }
@@ -1163,7 +1174,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s275</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s277</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1568,7 +1579,7 @@ function scrChat(opts){ stopAll(); primeTTS(); opts=opts||{}; const photo=opts.p
   app.innerHTML=`<div class="screen">
     <div class="chdr"><button class="back" onclick="${photo?'scrPhoto()':'scrDashboard()'}">‹</button>
       <div class="cav" id="cav">${aikoAvatarHtml()}</div>
-      <div style="flex:1"><div class="cav-name">${tutorName()} 🌸</div><div class="cav-sub" id="cstatus">${photo?'fotoğrafın üzerine konuşuyoruz':'çevrimiçi · eğitmenin'}</div></div>
+      <div style="flex:1"><div class="cav-name">${tutorName()} 🌸</div><div class="cav-sub" id="cstatus">${photo?'fotoğrafın üzerine konuşuyoruz':'çevrimiçi · avatarın'}</div></div>
       <button id="cpp" onclick="chatPlayPause()" title="Duraklat / devam" style="flex:none;width:40px;height:40px;border-radius:50%;border:none;background:#efe2fb;font-size:17px;cursor:pointer">▶</button>
       ${photo?`<img class="photothumb" src="${photo}" alt="" style="margin-left:6px">`:''}</div>
     ${photo?'<div class="cwbar" id="cwbar" style="color:var(--muted);font-size:12px">📷 Gördüklerini İngilizce anlat</div>':`<div class="cwbar" id="cwbar">${chatWords.map(function(w){return `<span class="cwchip" data-w="${w}">${w}</span>`;}).join('')}</div>`}
@@ -1935,7 +1946,7 @@ function attachSwipe(card,onLeft,onRight){
 }
 
 Object.assign(window,{scrTopics,pickTopic,startSelect,selDecide,toggleHide,toggleSave,cardGo,setMode,toggleNormal,toggleElif,openSheet,closeSheet,sheetSave,say,scrProduce,p1skip,p1next,bankTap,produceS1,produceS2,produceS3,scrDone,
-  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar,cancelSub,chatPlayPause});
+  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar,cancelSub,chatPlayPause,avatarTap});
 boot();
 </script>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>

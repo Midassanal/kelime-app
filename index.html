@@ -296,8 +296,8 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
     enrichVocab: (words,level)=>jfetch('/api/vocab/enrich',{method:'POST',body:JSON.stringify({words,level})}),
     gradeSpeaking: (transcript,level)=>jfetch('/api/speaking/grade',{method:'POST',body:JSON.stringify({transcript,level})}),
     async gradeSpeakingAudio(blob,level){ if(!BASE) return {offline:true}; try{ const fd=new FormData(); var ext=(blob&&blob.type&&blob.type.indexOf('mp4')>=0)?'mp4':(blob&&blob.type&&blob.type.indexOf('mpeg')>=0?'mp3':'webm'); fd.append('audio',blob,'speech.'+ext); fd.append('level',level||'A2'); const h={}; if(TOKEN)h.Authorization='Bearer '+TOKEN; const r=await fetch(BASE+'/api/speaking/grade',{method:'POST',headers:h,body:fd}); return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
-    generateStory: (words,level,tts=false)=>jfetch('/api/story/generate',{method:'POST',body:JSON.stringify({words,level,tts})}),
-    chatTurn: (message,opts={})=>jfetch('/api/chat/turn',{method:'POST',body:JSON.stringify({message,level:opts.level||'A2',words:opts.words||[],history:opts.history||[],tts:opts.tts?1:0})}),
+    generateStory: (words,level,tts=false,topic='')=>jfetch('/api/story/generate',{method:'POST',body:JSON.stringify({words,level,tts,topic:topic||undefined})}),
+    chatTurn: (message,opts={})=>jfetch('/api/chat/turn',{method:'POST',body:JSON.stringify({message,level:opts.level||'A2',words:opts.words||[],history:opts.history||[],tts:opts.tts?1:0,topic:opts.topic||undefined})}),
     wordImage: (word,prompt)=>jfetch('/api/image',{method:'POST',body:JSON.stringify({word:word,prompt:prompt||undefined})}),
     async tts(text,voice,instructions){ if(!BASE) return {offline:true}; try{ const h={'Content-Type':'application/json'}; if(TOKEN)h.Authorization='Bearer '+TOKEN; const r=await fetch(BASE+'/api/tts',{method:'POST',headers:h,body:JSON.stringify({text,voiceId:voice||undefined,instructions:instructions||undefined})}); const ct=r.headers.get('content-type')||''; if(ct.includes('audio')) return {audio:await r.blob()}; return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
     payStart: (email,name)=>jfetch('/api/pay/start',{method:'POST',body:JSON.stringify({email,name})}),
@@ -1186,7 +1186,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s279</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s280</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1313,7 +1313,7 @@ function cardGo(dir){ const ni=cardIdx+dir; if(ni<0)return; if(ni>=roster.length
 }
 
 /* ================= 3) HİKÂYE (dinamik) ================= */
-let storyToks=[], storyMode='read', STORY='';
+let storyToks=[], storyMode='read', STORY='', __storyCache={};
 function buildStory(){ const body=roster.map(d=>d.ex).join(' '); return currentTopic.sIntro+' '+body+' '+currentTopic.sOutro; }
 function scrStory(){ stopAll(); storyMode='read'; STORY=buildStory();
   app.innerHTML=`<div class="screen">
@@ -1323,10 +1323,10 @@ function scrStory(){ stopAll(); storyMode='read'; STORY=buildStory();
       <button class="mode" data-m="normal" onclick="setMode('normal')">🔊 ${tutorName()} ile dinle<small>sesli</small></button>
     </div>
     <div class="player" id="player"><button class="play" id="playn" onclick="toggleNormal()">▶</button><div class="pbar"><div class="pfill" id="pfill"></div></div><span class="plabel">${tutorName()} okuyor</span></div>
-    <div class="content"><div class="stitle">${currentTopic.sTitle}</div>
-      <div class="smeta">≈ 1 dk · <b>seçtiğin kelimelerden</b> örüldü · dinamik</div>
+    <div class="content"><div class="stitle" id="stitle">${currentTopic.sTitle}</div>
+      <div class="smeta">≈ 1 dk · <b>seçtiğin kelimelerle</b> örülen tek parça hikâye</div>
       <div class="story" id="story"></div>
-      <div class="diffnote" style="margin-top:14px">Bu taslak, seçtiğin 5 kelimenin cümlelerinden birleşti — kelimelerin değişince hikâye de değişir. Gerçek uygulamada AI bunu akıcı, tek parça bir hikâyeye dönüştürür.</div></div>
+      <div class="diffnote" id="storynote" style="margin-top:14px">Bu hikâye, seçtiğin 5 kelimeyi tek bir akıcı öyküde birleştirir — kelimelerin değişince hikâye de değişir.</div></div>
     <div class="footer"><button class="primary" onclick="scrProduce()">Devam et → cümle yaz</button>
       <div class="foothint">Renkli kelimeye dokun · anlam & kaydet</div></div>
     <div class="backdrop" id="backdrop" onclick="closeSheet()"></div>
@@ -1335,8 +1335,24 @@ function scrStory(){ stopAll(); storyMode='read'; STORY=buildStory();
       <div class="slvl" id="slvl"></div><div class="smean" id="smean"></div><div class="sex" id="sex"></div>
       <button class="pbtn" style="margin-top:14px" onclick="say(curKey,false)">🔊 kelimeyi dinle</button></div>
   </div>`;
+  var canAI=!!(API_BASE&&window.KelimeAPI&&KelimeAPI.generateStory);
+  if(canAI){ var st=document.getElementById('story'); if(st)st.innerHTML='<div style="color:var(--muted);font-size:14px;padding:6px 0;line-height:1.5">✨ '+tutorName()+' senin kelimelerinden tek parça bir hikâye örüyor…</div>'; maybeGenerateStory(); }
+  else renderStory();
+}
+/* Hikâyeyi AI ile tek parça, bağlantılı üret. Çevrimdışıysa cümleleri birleştiren taslağa düş. */
+async function maybeGenerateStory(){
+  if(!(API_BASE&&window.KelimeAPI&&KelimeAPI.generateStory)){ renderStory(); return; }
+  var words=roster.map(function(d){return d.w;}); var lvl=(profile&&profile.level)||'A2';
+  var key=currentTopic.id+'|'+lvl+'|'+words.join(',');
+  if(__storyCache[key]){ STORY=__storyCache[key].text; applyStoryTitle(__storyCache[key].title); renderStory(); return; }
+  try{
+    var r=await KelimeAPI.generateStory(words,lvl,false,currentTopic.name||'');
+    var s=r&&r.story&&(r.story.story_en||r.story.storyEn);
+    if(s&&String(s).trim()){ var title=(r.story.title_en||r.story.titleEn||''); __storyCache[key]={text:s,title:title}; STORY=s; applyStoryTitle(title); }
+  }catch(e){}
   renderStory();
 }
+function applyStoryTitle(t){ if(!t)return; var el=document.getElementById('stitle'); if(el)el.textContent=t; }
 function renderStory(){
   const el=document.getElementById('story'); storyToks=[]; let html=''; const re=/([A-Za-z]+)|([^A-Za-z]+)/g; let m;
   while((m=re.exec(STORY))!==null){ if(m[1]){ const word=m[1], key=word.toLowerCase(), isKw=WMAP.hasOwnProperty(key);

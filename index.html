@@ -151,7 +151,13 @@
   .chips{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-bottom:8px;} .chip{font-size:12px;font-weight:600;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 11px;}
 
   /* WELCOME / AUTH / REGISTER / TEST / DASH / PAYWALL */
-  .welcome2{align-items:center;justify-content:flex-start;text-align:center;padding:30px 22px 40px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  .welcome2{align-items:center;justify-content:flex-start;text-align:center;padding:30px 22px 40px;overflow-y:auto;-webkit-overflow-scrolling:touch;background:linear-gradient(165deg,#ff9a76 0%,#ff7e9d 38%,#ffb26b 72%,#ffd28a 100%);}
+  .welcome2 h1{color:#fff;text-shadow:0 2px 10px #b83c2e40;font-weight:900;}
+  .welcome2 .wsub{color:#fff5ef;font-weight:600;}
+  .welcome2 .subnote{color:#fff5ef;font-weight:600;}
+  .welcome2 .primary{background:linear-gradient(135deg,#ff5f7e,#ff8a5b);box-shadow:0 10px 24px #ff5f7e55;}
+  .welcome2 .ghost{color:#c9503c;border:1px solid #ffffff;background:#ffffffcc;font-weight:600;}
+  .welcome2 .featchips span{box-shadow:0 3px 10px #b83c2e26;}
   .welcome2 .wtop{margin-top:auto;} .welcome2 .wbot{margin-bottom:auto;}
   .wlogo{font-size:56px;} .welcome2 h1{font-size:30px;margin:6px 0 2px;letter-spacing:-.02em;} .wsub{color:var(--muted);font-size:14px;margin:0 0 26px;}
   .aikoAv{width:116px;height:116px;border-radius:50%;background:radial-gradient(circle at 50% 36%,#ffffff 0%,#f6eefb 58%,#ecdffb 100%);box-shadow:0 12px 32px #b79bd345, inset 0 0 0 1px #00000008;display:flex;align-items:center;justify-content:center;animation:aBob 3.6s ease-in-out infinite;}
@@ -603,16 +609,16 @@ function avatarTap(){ if(!curAvatarId()){ scrAvatars(); return; } replayGreet();
 function scrWelcome(){ stopAll(); const has=!!profile;
   app.innerHTML=`<div class="screen welcome2">
     <div class="wtop" style="display:flex;flex-direction:column;align-items:center;width:100%">
-      <div class="aikoAv" onclick="avatarTap()" title="Dokun" style="cursor:pointer">${aikoAvatarHtml()}</div>
-      <div style="font-size:11px;color:#9b7fb8;margin-top:6px">${curAvatarId()?('👆 '+tutorName()+'\'a dokun, seni selamlasın'):'👆 Önce avatarını seç'}</div>
-      <button class="avlink" onclick="scrAvatars()">${curAvatarId()?('🎭 Avatarın: '+tutorName()+' · değiştir'):'🎭 Avatarını seç'}</button>
+      <div class="aikoAv" onclick="avatarTap()" title="Dokun" style="cursor:pointer;background:radial-gradient(circle at 50% 34%,#ffffff 0%,#fff2ec 60%,#ffe0d3 100%);box-shadow:0 14px 34px #c9503c55, 0 0 0 4px #ffffff40">${aikoAvatarHtml()}</div>
+      <div style="font-size:11px;color:#fff;font-weight:600;margin-top:6px">${curAvatarId()?('👆 '+tutorName()+'\'a dokun, seni selamlasın'):'👆 Önce avatarını seç'}</div>
+      <button class="avlink" onclick="scrAvatars()" style="color:#fff">${curAvatarId()?('🎭 Avatarın: '+tutorName()+' · değiştir'):'🎭 Avatarını seç'}</button>
       <h1 style="margin:2px 0 2px">Parlo</h1><p class="wsub" style="margin:0 0 14px">Günde 15 kelime · İngilizceni sakince büyüt</p>
-      <div class="wgreet" style="display:flex;gap:10px;align-items:center;max-width:340px;margin:0 auto 14px;background:#ffffffdd;border:1px solid #ece3da;border-radius:16px;padding:11px 13px;text-align:left;box-shadow:0 6px 18px #0000000f">
-        <button id="wgPlay" onclick="replayGreet()" aria-label="Tekrar dinle" style="flex:none;width:42px;height:42px;border-radius:50%;border:none;background:linear-gradient(135deg,#efe2fb,#e3d3f6);font-size:18px;cursor:pointer;box-shadow:0 2px 8px #b79bd340">🔊</button>
-        <div style="flex:1"><div style="font-size:10.5px;font-weight:700;color:#9b7fb8;letter-spacing:.04em;margin-bottom:1px">${tutorName().toLocaleUpperCase('tr')}</div><p id="wgTxt" style="margin:0;font-size:12.5px;line-height:1.42;color:#5a4a42"></p></div>
+      <div class="wgreet" style="display:flex;gap:10px;align-items:center;max-width:340px;margin:0 auto 14px;background:#ffffff;border:none;border-radius:16px;padding:11px 13px;text-align:left;box-shadow:0 10px 26px #b83c2e33">
+        <button id="wgPlay" onclick="replayGreet()" aria-label="Tekrar dinle" style="flex:none;width:42px;height:42px;border-radius:50%;border:none;background:linear-gradient(135deg,#ff7e9d,#ff9a76);font-size:18px;cursor:pointer;box-shadow:0 4px 12px #ff7e9d66;color:#fff">🔊</button>
+        <div style="flex:1"><div style="font-size:10.5px;font-weight:800;color:#e8556f;letter-spacing:.04em;margin-bottom:1px">${tutorName().toLocaleUpperCase('tr')}</div><p id="wgTxt" style="margin:0;font-size:12.5px;line-height:1.42;color:#5a4a42"></p></div>
       </div>
       <div class="featchips">
-        <span>🎨 Gerçek görseller</span><span>🔁 Akıllı tekrar</span><span>🌸 ${tutorName()} ile konuş</span><span>📈 Seviyene göre</span>
+        <span style="color:#e8556f">🎨 Gerçek görseller</span><span style="color:#e07b3a">🔁 Akıllı tekrar</span><span style="color:#d9558a">🌸 ${tutorName()} ile konuş</span><span style="color:#c7702f">📈 Seviyene göre</span>
       </div>
     </div>
     <div class="wbot" style="width:100%;display:flex;flex-direction:column;align-items:center">
@@ -1180,7 +1186,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s278</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s279</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>

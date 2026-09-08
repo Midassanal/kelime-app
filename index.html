@@ -1186,7 +1186,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s280</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s281</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1601,6 +1601,9 @@ const AIKO_SVG=`<svg viewBox='0 0 100 100'><path d='M18 46 Q20 14 50 12 Q80 14 8
 let chatWords=[], chatIdx=-1, chatUsed=null, chatFixes=[], chatRec=null, chatListening=false;
 let chatMode='words', PHOTO=null, chatSeedWords=null;
 const PHOTO_QS=["What do you see in this picture?","What colours can you see?","Where do you think this place is?","What is happening in the picture?","How does this picture make you feel?","Tell me one more detail about it."];
+let chatHistory=[], chatTurns=0;
+const TOPIC_EN={ekonomi:'money and the economy',seyahat:'travel',muzik:'music',sohbet:'everyday small talk',kultur:'culture and the arts',teknoloji:'technology',saglik:'health and well-being',yemek:'food and cooking',kariyer:'work and careers',temel:'everyday basics',custom:'the words you are learning'};
+function chatTopicEN(){ var tid=(currentTopic&&currentTopic.id)||(profile&&profile.lastTopicId)||''; return TOPIC_EN[tid]||''; }
 function chatTargets(){ let learned=[];
   if(profile&&profile.studied){ Object.keys(profile.studied).forEach(function(t){ (profile.studied[t]||[]).forEach(function(w){ learned.push(w); }); }); }
   learned=learned.filter(function(v,i,a){return a.indexOf(v)===i && v.indexOf(' ')<0;});
@@ -1610,11 +1613,12 @@ function chatTargets(){ let learned=[];
   return pick;
 }
 function scrChat(opts){ stopAll(); primeTTS(); opts=opts||{}; const photo=opts.photo||null; chatMode=photo?'photo':'words';
-  chatWords=photo?[]:((chatSeedWords&&chatSeedWords.length)?chatSeedWords.slice():chatTargets()); chatSeedWords=null; chatIdx=-1; chatUsed=new Set(); chatFixes=[];
+  chatWords=photo?[]:((chatSeedWords&&chatSeedWords.length)?chatSeedWords.slice():chatTargets()); chatSeedWords=null; chatIdx=-1; chatUsed=new Set(); chatFixes=[]; chatHistory=[]; chatTurns=0;
   app.innerHTML=`<div class="screen">
     <div class="chdr"><button class="back" onclick="${photo?'scrPhoto()':'scrDashboard()'}">‹</button>
       <div class="cav" id="cav">${aikoAvatarHtml()}</div>
-      <div style="flex:1"><div class="cav-name">${tutorName()} 🌸</div><div class="cav-sub" id="cstatus">${photo?'fotoğrafın üzerine konuşuyoruz':'çevrimiçi · avatarın'}</div></div>
+      <div style="flex:1"><div class="cav-name">${tutorName()} 🌸</div><div class="cav-sub" id="cstatus">${photo?'fotoğrafın üzerine konuşuyoruz':'çevrimiçi · konuşma partnerin'}</div></div>
+      <button id="cfin" onclick="cfinish()" title="Sohbeti bitir" style="flex:none;height:34px;padding:0 12px;border-radius:17px;border:none;background:#ffffffcc;color:#c9503c;font-weight:800;font-size:12px;cursor:pointer;margin-right:6px">✓ Bitir</button>
       <button id="cpp" onclick="chatPlayPause()" title="Duraklat / devam" style="flex:none;width:40px;height:40px;border-radius:50%;border:none;background:#efe2fb;font-size:17px;cursor:pointer">▶</button>
       ${photo?`<img class="photothumb" src="${photo}" alt="" style="margin-left:6px">`:''}</div>
     ${photo?'<div class="cwbar" id="cwbar" style="color:var(--muted);font-size:12px">📷 Gördüklerini İngilizce anlat</div>':`<div class="cwbar" id="cwbar">${chatWords.map(function(w){return `<span class="cwchip" data-w="${w}">${w}</span>`;}).join('')}</div>`}
@@ -1640,9 +1644,8 @@ function scrChat(opts){ stopAll(); primeTTS(); opts=opts||{}; const photo=opts.p
     mic.onclick=function(){ if(chatListening){ try{chatRec.stop();}catch(_){}; return; } try{ speechSynthesis.cancel(); const box=document.getElementById('ctxt'); if(box)box.value=''; chatRec.start(); chatListening=true; mic.classList.add('on'); setStatus('🎤 dinliyor… konuş'); }catch(e){ setStatus('ses başlatılamadı — yazarak dene'); } };
   } else { mic.style.display='none'; }
   // açılış
-  if(chatMode==='photo') cbot("What a nice photo! 🌸 Let's talk about it together.");
-  else cbot("Hi! I'm "+tutorName()+" 🌸 Let's practise your words together. Try to use them in your sentences!");
-  setTimeout(chatNext, 1400);
+  if(chatMode==='photo'){ cbot("What a nice photo! 🌸 Let's talk about it together."); setTimeout(chatNext, 1400); }
+  else { var opener="Hi! I'm "+tutorName()+". 😊 Let's have a friendly little chat in English. How are you doing today?"; cbot(opener); chatHistory.push({role:'assistant',text:opener}); }
 }
 function cav(on){ const a=document.getElementById('cav'); if(a)a.classList.toggle('talking',on); }
 function cspeak(t){ window.__lastBot=t; cav(true); var b=document.getElementById('cpp'); if(b)b.textContent='⏸'; tutorSpeak(String(t).replace(/\*|_/g,''), function(){ cav(false); var b2=document.getElementById('cpp'); if(b2)b2.textContent='▶'; }); }
@@ -1656,8 +1659,8 @@ function setStatusSafe(t){ const s=document.getElementById('cstatus'); if(s)s.te
 let ttsPrimed=false;
 function primeTTS(){ if(ttsPrimed||typeof speechSynthesis==='undefined')return; try{ speechSynthesis.resume(); const u=new SpeechSynthesisUtterance(' '); u.volume=0; speechSynthesis.speak(u); ttsPrimed=true; }catch(e){} }
 function cfmt(t){ return t.replace(/\*([^*]+)\*/g,'<em>$1</em>'); }
-function cbot(t,fix){ const c=document.getElementById('cchat'); if(!c)return; const d=document.createElement('div'); d.className='cmsg bot';
-  d.innerHTML=cfmt(t)+(fix?`<div class="fx">${fix}</div>`:'')+`<br><button class="crespk" title="Dinle">🔊 dinle</button>`;
+function cbot(t,fix,hint){ const c=document.getElementById('cchat'); if(!c)return; const d=document.createElement('div'); d.className='cmsg bot';
+  d.innerHTML=cfmt(t)+(fix?`<div class="fx">${fix}</div>`:'')+(hint?`<div class="chint" style="margin-top:6px;font-size:11.5px;color:var(--muted);line-height:1.4">💬 ${hint}</div>`:'')+`<br><button class="crespk" title="Dinle">🔊 dinle</button>`;
   c.appendChild(d); c.scrollTop=c.scrollHeight;
   const btn=d.querySelector('.crespk'); if(btn) btn.onclick=function(){ cspeak(t); };
   cspeak(t); }
@@ -1673,18 +1676,44 @@ function chatNext(){ chatIdx++;
   ctyping(true); setTimeout(function(){ ctyping(false); cbot(cpick(["Can you make a sentence with *"+w+"*?","Try using *"+w+"* in a sentence.","How would you use *"+w+"* today?"])); }, 700);
 }
 function chatUser(text){ text=(text||'').trim(); if(!text)return; cme(text);
-  const r=correctText(text); r.changes.forEach(function(c){ if(c.indexOf('→')>=0 && chatFixes.indexOf(c)<0) chatFixes.push(c); });
-  if(chatMode==='photo'){
+  if(chatMode==='photo'){ // fotoğraf modu: mevcut yerel akış (görsel bağlamı gerektiriyor)
+    const r=correctText(text); r.changes.forEach(function(c){ if(c.indexOf('→')>=0 && chatFixes.indexOf(c)<0) chatFixes.push(c); });
     const ack=cpick(["Nice! ","Good! ","I can picture it! ","Lovely! "]);
     const fix=(r.changes.length && r.text.toLowerCase()!==text.toLowerCase())?`💡 We usually say: <b>"${r.text}"</b>`:'';
     ctyping(true); setTimeout(function(){ ctyping(false); cbot(ack, fix); setTimeout(chatNext, fix?1000:550); }, 650);
     return;
   }
   cmarkUsed(text);
-  const cur=chatWords[chatIdx]; const usedCur=cur && text.toLowerCase().indexOf(cur.toLowerCase())>=0;
+  // Kelime sohbeti: gerçek AI konuşması. Çevrimdışı/başarısızsa yerel akışa düşer.
+  if(API_BASE && window.KelimeAPI && KelimeAPI.chatTurn){ chatAIReply(text); return; }
+  chatLocalReply(text);
+}
+async function chatAIReply(text){
+  chatHistory.push({role:'user',text:text}); chatTurns++;
+  ctyping(true);
+  try{
+    var r=await KelimeAPI.chatTurn(text,{ level:(profile&&profile.level)||'A2', words:chatWords, history:chatHistory.slice(0,-1), topic:chatTopicEN() });
+    ctyping(false);
+    var reply=r&&r.reply&&(r.reply.reply_en||r.reply.replyEn);
+    if(!reply||!String(reply).trim()){ chatLocalReply(text); return; }
+    var corr=(r.reply.correction_en||r.reply.correctionEn||'').trim();
+    var hint=(r.reply.hint_tr||r.reply.hintTr||'').trim();
+    var showCorr=corr && corr.toLowerCase()!==text.trim().toLowerCase();
+    var fix=showCorr?`💡 ${corr}`:'';
+    if(showCorr && chatFixes.indexOf(corr)<0) chatFixes.push(corr);
+    cbot(reply, fix, hint);
+    chatHistory.push({role:'assistant',text:reply});
+  }catch(e){ ctyping(false); chatLocalReply(text); }
+}
+function chatLocalReply(text){
+  const r=correctText(text); r.changes.forEach(function(c){ if(c.indexOf('→')>=0 && chatFixes.indexOf(c)<0) chatFixes.push(c); });
+  const usedCur=chatWords.some(function(w){return text.toLowerCase().indexOf(w.toLowerCase())>=0;});
   const ack=usedCur?cpick(["Perfect! ","Great sentence! ","Well done! ","Nice! "]):cpick(["Good try! ","Okay! ","I see! "]);
   const fix=(r.changes.length && r.text.toLowerCase()!==text.toLowerCase())?`💡 We usually say: <b>"${r.text}"</b>`:'';
-  ctyping(true); setTimeout(function(){ ctyping(false); cbot(ack, fix); setTimeout(chatNext, fix?1000:550); }, 650);
+  ctyping(true); setTimeout(function(){ ctyping(false); cbot(ack, fix);
+    var next=chatWords.find(function(w){return !chatUsed.has(w);});
+    if(next) setTimeout(function(){ if(document.getElementById('cchat')) cbot("Can you make a sentence with *"+next+"*?"); }, 950);
+  }, 500);
 }
 function cfinish(){ ctyping(true); setTimeout(function(){ ctyping(false);
   const fixes=chatFixes.length?chatFixes.map(function(f){return '• '+f;}).join('\n'):'✓ Belirgin bir hata yoktu, çok iyi!';

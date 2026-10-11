@@ -478,7 +478,8 @@ pickVoice(); if(typeof speechSynthesis!=='undefined')speechSynthesis.onvoicescha
 var __tutorAudio=null, __ttsMem={}, __audioUnlocked=false;
 function tutorAudioEl(){ if(!__tutorAudio){ __tutorAudio=new Audio(); try{__tutorAudio.setAttribute('playsinline','');}catch(e){} } return __tutorAudio; }
 /* iOS otomatik oynatmayı engeller: ilk dokunuşta tek ses elementini "aç", sonra hep onu kullan → sonraki oynatmalar (sohbet vb.) çalışır. */
-function unlockTutorAudio(){ if(__audioUnlocked)return; try{ var a=tutorAudioEl(); a.muted=true; var p=a.play(); if(p&&p.then){ p.then(function(){ try{a.pause();a.currentTime=0;}catch(e){} a.muted=false; __audioUnlocked=true; }).catch(function(){ a.muted=false; }); } else { __audioUnlocked=true; } }catch(e){} }
+var __SILENT_WAV='data:audio/wav;base64,UklGRqQHAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YYAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+function unlockTutorAudio(){ if(__audioUnlocked)return; try{ var a=tutorAudioEl(); a.src=__SILENT_WAV; a.muted=true; var p=a.play(); if(p&&p.then){ p.then(function(){ try{a.pause();a.currentTime=0;}catch(e){} a.muted=false; __audioUnlocked=true; }).catch(function(){ a.muted=false; }); } else { try{a.pause();}catch(e){} a.muted=false; __audioUnlocked=true; } }catch(e){} }
 try{ window.addEventListener('pointerdown',unlockTutorAudio,{capture:true}); window.addEventListener('touchstart',unlockTutorAudio,{capture:true}); }catch(e){}
 function browserSay(t,done){ try{ if(typeof speechSynthesis==='undefined'){ if(done)done(); return; } speechSynthesis.cancel(); if(!VOICE)pickVoice(); var u=new SpeechSynthesisUtterance(String(t)); u.lang='en-US'; if(VOICE)u.voice=VOICE; u.rate=0.95; u.pitch=1; u.onend=function(){ if(done)done(); }; try{speechSynthesis.resume();}catch(_){} setTimeout(function(){try{speechSynthesis.speak(u);}catch(e){}},40);}catch(e){ if(done)done(); } }
 function tutorSpeak(text,done){ text=String(text==null?'':text); if(!text.trim()){ if(done)done(); return; }
@@ -519,7 +520,7 @@ async function syncPull(){ if(!API_BASE||!window.KelimeAPI||!getAuthToken())retu
   return false; }
 function startDay(d){return new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();}
 function dayNumber(){ if(!profile)return 1; const j=new Date(profile.joinDate); return Math.floor((startDay(new Date())-startDay(j))/86400000)+1+(profile.devOffset||0); }
-function trialLocked(){ return !!profile && !profile.subscribed && dayNumber()>TRIAL_DAYS; }
+function trialLocked(){ return false; } /* DENEME: odeme duvari kapali */
 function fmtDate(iso){ try{return new Date(iso).toLocaleDateString('tr-TR',{day:'numeric',month:'long',year:'numeric'});}catch(e){return iso;} }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function recordKnown(w){ if(!profile||!currentTopic)return; const t=currentTopic.id; profile.known=profile.known||{}; profile.known[t]=profile.known[t]||[]; if(profile.known[t].indexOf(w)<0){ profile.known[t].push(w); saveProfile(); } }
@@ -628,7 +629,7 @@ function scrWelcome(){ stopAll(); const has=!!profile;
              :`<button class="primary" onclick="scrRegister()">Hemen başla →</button>
                ${(API_BASE)?`<button class="ghost" onclick="scrLogin()">Zaten hesabım var · giriş yap</button>`:'<button class="ghost" onclick="scrRegister()">Nasıl çalışıyor? Dene</button>'}`}
       </div>
-      <div class="subnote" id="wnote">3 gün ücretsiz deneme · sonrasında aylık üyelik</div>
+      <div class="subnote" id="wnote">Deneme sürümü · şu an tüm özellikler açık</div>
     </div>
   </div>`;
   setTimeout(function(){ greetWelcome(has); },60);
@@ -638,7 +639,10 @@ function newUser(){ scrRegister(); }
 /* ===== Aiko avatar seçimi (AI üretilmiş, statik) ===== */
 var AVATARS=[{id:'f1',label:'Ada'},{id:'f2',label:'Ela'},{id:'f3',label:'Nur'},{id:'m1',label:'Emir'},{id:'m2',label:'Can'},{id:'m3',label:'Deniz'}];
 function avatarURL(id){ return (API_BASE||'').replace(/\/$/,'')+'/img/avatar-'+id+'.webp'; }
-function curAvatarId(){ return (profile&&profile.avatarId)||window.__pendingAvatar||''; }
+function savedAvId(){ try{ return localStorage.getItem('parlo_av')||''; }catch(e){ return ''; } }
+function curAvatarId(){ var id=(profile&&profile.avatarId)||window.__pendingAvatar||savedAvId()||'';
+  if(id && profile && !profile.avatarId){ profile.avatarId=id; try{saveProfile();}catch(e){} }
+  return id; }
 function aikoAvatarHtml(){ var id=curAvatarId(); if(id) return '<img class="avimg" src="'+avatarURL(id)+'" alt="" onerror="this.remove()">'; return AIKO_SVG; }
 function scrAvatars(){ stopAll(); var cur=curAvatarId();
   app.innerHTML='<div class="screen">'
@@ -647,7 +651,7 @@ function scrAvatars(){ stopAll(); var cur=curAvatarId();
    +'<div class="avgrid">'+AVATARS.map(function(a){ return '<button class="avopt'+(a.id===cur?' sel':'')+'" onclick="chooseAvatar(\''+a.id+'\')"><img src="'+avatarURL(a.id)+'" alt="" loading="lazy" onerror="this.style.opacity=.3"><span>'+a.label+'</span></button>'; }).join('')+'</div>'
    +'</div></div>';
 }
-function chooseAvatar(id){ if(profile){ profile.avatarId=id; saveProfile(); } else { window.__pendingAvatar=id; } window.__greetNow=true; scrWelcome(); }
+function chooseAvatar(id){ try{ localStorage.setItem('parlo_av',id); }catch(e){} window.__pendingAvatar=id; if(profile){ profile.avatarId=id; saveProfile(); } window.__greetNow=true; scrWelcome(); }
 /* ---- GİRİŞ (başka cihaz / mevcut hesap) ---- */
 function scrLogin(){ stopAll();
   app.innerHTML=`<div class="screen">
@@ -1186,7 +1190,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,5);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s281</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s285</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1633,22 +1637,30 @@ function scrChat(opts){ stopAll(); primeTTS(); opts=opts||{}; const photo=opts.p
   document.getElementById('ctxt').addEventListener('keydown',function(e){ if(e.key==='Enter'){e.preventDefault();document.getElementById('csend').click();} });
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition; const mic=document.getElementById('cmic');
   const setStatus=function(t){ const s=document.getElementById('cstatus'); if(s)s.textContent=t; };
-  if(SR){ chatRec=new SR(); chatRec.lang='en-US'; chatRec.interimResults=true; chatRec.continuous=false; let gotResult=false;
-    chatRec.onresult=function(e){ let interim='',final=''; for(let i=0;i<e.results.length;i++){ const t=e.results[i][0].transcript; if(e.results[i].isFinal)final+=t; else interim+=t; }
-      const box=document.getElementById('ctxt'); if(box)box.value=(final||interim);
-      if(final && final.trim()){ gotResult=true; try{chatRec.stop();}catch(_){}} };
-    chatRec.onerror=function(ev){ chatListening=false; mic.classList.remove('on'); setStatus((ev&&(ev.error==='not-allowed'||ev.error==='service-not-allowed'))?'🎤 mikrofon izni yok — yazarak dene':'seni duyamadım — yazarak yaz ✍️'); };
-    chatRec.onend=function(){ chatListening=false; mic.classList.remove('on'); const box=document.getElementById('ctxt'); const v=box?box.value.trim():'';
-      if(v){ box.value=''; setStatus('çevrimiçi · konuşma partnerin'); chatUser(v); }
-      else { setStatus('seni duyamadım — yazarak yaz ✍️'); } gotResult=false; };
-    mic.onclick=function(){ if(chatListening){ try{chatRec.stop();}catch(_){}; return; } try{ speechSynthesis.cancel(); const box=document.getElementById('ctxt'); if(box)box.value=''; chatRec.start(); chatListening=true; mic.classList.add('on'); setStatus('🎤 dinliyor… konuş'); }catch(e){ setStatus('ses başlatılamadı — yazarak dene'); } };
+  if(SR){
+    mic.onclick=function(){
+      if(chatListening){ try{chatRec&&chatRec.stop();}catch(_){}; return; }
+      try{ speechSynthesis.cancel(); }catch(_){} try{ stopAll(); }catch(_){}
+      var box=document.getElementById('ctxt'); if(box)box.value='';
+      var rec; try{ rec=new SR(); }catch(e){ setStatus('ses başlatılamadı — yazarak dene'); return; }
+      chatRec=rec; rec.lang='en-US'; rec.interimResults=true; rec.continuous=false;
+      rec.onresult=function(e){ var interim='',final=''; for(var i=0;i<e.results.length;i++){ var t=e.results[i][0].transcript; if(e.results[i].isFinal)final+=t; else interim+=t; } var b=document.getElementById('ctxt'); if(b)b.value=(final||interim); if(final && final.trim()){ try{rec.stop();}catch(_){}} };
+      rec.onerror=function(ev){ chatListening=false; mic.classList.remove('on'); setStatus((ev&&(ev.error==='not-allowed'||ev.error==='service-not-allowed'))?'🎤 mikrofon izni yok — yazarak dene':'seni duyamadım — 🎤 tekrar dokun ya da yaz ✍️'); };
+      rec.onend=function(){ chatListening=false; mic.classList.remove('on'); var b=document.getElementById('ctxt'); var v=b?b.value.trim():''; if(v){ b.value=''; setStatus('çevrimiçi · konuşma partnerin'); chatUser(v); } else { setStatus('seni duyamadım — 🎤 tekrar dokun ya da yaz ✍️'); } };
+      try{ rec.start(); chatListening=true; mic.classList.add('on'); setStatus('🎤 dinliyor… konuş'); }catch(e){ chatListening=false; setStatus('🎤 tekrar dokun'); }
+    };
   } else { mic.style.display='none'; }
   // açılış
   if(chatMode==='photo'){ cbot("What a nice photo! 🌸 Let's talk about it together."); setTimeout(chatNext, 1400); }
   else { var opener="Hi! I'm "+tutorName()+". 😊 Let's have a friendly little chat in English. How are you doing today?"; cbot(opener); chatHistory.push({role:'assistant',text:opener}); }
 }
 function cav(on){ const a=document.getElementById('cav'); if(a)a.classList.toggle('talking',on); }
-function cspeak(t){ window.__lastBot=t; cav(true); var b=document.getElementById('cpp'); if(b)b.textContent='⏸'; tutorSpeak(String(t).replace(/\*|_/g,''), function(){ cav(false); var b2=document.getElementById('cpp'); if(b2)b2.textContent='▶'; }); }
+function speakClean(t){ return String(t==null?'':t)
+  .replace(/\*[^*]*\*/g,' ')
+  .replace(/\([^)]*\)/g,' ')
+  .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️]/gu,' ')
+  .replace(/[*_~`#]/g,' ').replace(/\s+/g,' ').trim(); }
+function cspeak(t){ window.__lastBot=t; cav(true); var b=document.getElementById('cpp'); if(b)b.textContent='⏸'; tutorSpeak(speakClean(t), function(){ cav(false); var b2=document.getElementById('cpp'); if(b2)b2.textContent='▶'; }); }
 /* Tek tuş: konuşuyorsa duraklat, duraklamışsa devam, hiç yoksa son mesajı seslendir. */
 function chatPlayPause(){ var b=document.getElementById('cpp');
   var st=tutorPauseResume();

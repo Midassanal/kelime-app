@@ -306,14 +306,10 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
   };
   global.KelimeAPI = API;
 })(window);
-/* Backend adresi: ?api=https://... ile ayarla (kalıcı saklanır). Boşsa uygulama tamamen yerel çalışır. */
+/* Backend adresi SABİT. Güvenlik: API adresi URL (?api=) veya localStorage ile değiştirilemez — aksi halde kötü niyetli bir bağlantı token'ı başka sunucuya yönlendirebilirdi. */
 const DEFAULT_API='https://kelime-backend-fgvw.onrender.com';
-let API_BASE = '';
-(function(){ try{
-  const q=new URLSearchParams(location.search).get('api');
-  if(q!==null){ q?localStorage.setItem('kelimeApp.apiBase',q):localStorage.removeItem('kelimeApp.apiBase'); }
-  API_BASE=localStorage.getItem('kelimeApp.apiBase')||DEFAULT_API;
-}catch(e){ API_BASE=DEFAULT_API; }
+let API_BASE = DEFAULT_API;
+(function(){ try{ localStorage.removeItem('kelimeApp.apiBase'); }catch(e){} /* eskiden planlanmış olabilecek override değerini temizle */
 if(window.KelimeAPI && API_BASE) KelimeAPI.setBase(API_BASE); })();
 
 /* ================= GÖRSELLER ================= */
@@ -503,6 +499,10 @@ const PKEY='kelimeApp.profile.v1'; const TRIAL_DAYS=3;
 let profile=null, pendingStart=null;
 const TKEY='kelimeApp.token';
 function loadProfile(){ try{const s=localStorage.getItem(PKEY);profile=s?JSON.parse(s):null;}catch(e){profile=window.__mem||null;} }
+/* Profil "geçerli" sayılması için ad + geçerli katılım tarihi şart (bozuk/eksik profil panele sokmasın → 'undefined/NaN' engeli). */
+function profileValid(){ try{ return !!(profile && typeof profile==='object' && profile.name && String(profile.name).trim() && profile.joinDate && !isNaN(new Date(profile.joinDate).getTime())); }catch(e){ return false; } }
+/* Türkçe yönelme eki (datif): Ada→Ada'ya, Emir→Emir'e, Can→Can'a, Deniz→Deniz'e, Nur→Nur'a */
+function datif(name){ name=String(name||''); if(!name) return name; var vs=name.toLocaleLowerCase('tr').replace(/[^aeıioöuü]/g,''); var last=vs.slice(-1); var back='aıou'.indexOf(last)>=0; var endsVowel=/[aeıioöuü]$/i.test(name); return name+"'"+(endsVowel?'y':'')+(back?'a':'e'); }
 function saveProfile(){ if(profile)profile.updatedAt=Date.now(); try{localStorage.setItem(PKEY,JSON.stringify(profile));}catch(e){window.__mem=profile;} syncPush(); }
 /* --- sunucu senkronu (backend kapalıysa hepsi no-op) --- */
 function getAuthToken(){ try{return localStorage.getItem(TKEY)||'';}catch(e){return '';} }
@@ -522,10 +522,13 @@ function startDay(d){return new Date(d.getFullYear(),d.getMonth(),d.getDate()).g
 function dayNumber(){ if(!profile)return 1; const j=new Date(profile.joinDate); return Math.floor((startDay(new Date())-startDay(j))/86400000)+1+(profile.devOffset||0); }
 function trialLocked(){ return false; } /* DENEME: odeme duvari kapali */
 function fmtDate(iso){ try{return new Date(iso).toLocaleDateString('tr-TR',{day:'numeric',month:'long',year:'numeric'});}catch(e){return iso;} }
-function todayStr(){ return new Date().toISOString().slice(0,10); }
+function todayStr(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); } /* YEREL tarih: günlük sınır yerel gece yarısı sıfırlanır (SRS ile aynı gün tanımı) */
 function recordKnown(w){ if(!profile||!currentTopic)return; const t=currentTopic.id; profile.known=profile.known||{}; profile.known[t]=profile.known[t]||[]; if(profile.known[t].indexOf(w)<0){ profile.known[t].push(w); saveProfile(); } }
 function recordProgress(){ if(!profile||!currentTopic)return; const t=currentTopic.id; profile.studied=profile.studied||{}; profile.studied[t]=profile.studied[t]||[];
-  var addedNew=0; roster.forEach(d=>{if(!profile.studied[t].includes(d.w)){profile.studied[t].push(d.w);addedNew++;} enterSRS(d.w,t,d.lvl);}); profile.lastTopicId=t;
+  var addedNew=0; roster.forEach(d=>{if(!profile.studied[t].includes(d.w)){profile.studied[t].push(d.w);addedNew++;} enterSRS(d.w,t,d.lvl);
+    /* Sözlükte olmayan (özel/içe aktarılan) kelimenin anlam+örneğini sakla ki tekrar ekranında görünsün */
+    try{ var _k=String(d.w).toLowerCase(); if(!wordIndex()[_k]){ profile.wextra=profile.wextra||{}; profile.wextra[_k]={w:d.w,pos:d.pos||'',mean:d.mean||'',ex:d.ex||'',tr:d.tr||'',lvl:d.lvl||''}; } }catch(e){}
+  }); profile.lastTopicId=t;
   if(t!=='custom') newTodayAdd(addedNew); // fotoğraf/içe aktarma günlük sınıra dahil değil
   profile.daysActive=profile.daysActive||[]; const ds=todayStr(); if(!profile.daysActive.includes(ds))profile.daysActive.push(ds); saveProfile(); }
 /* ===== Günlük yeni kelime sınırı (günde en çok 15 yeni) ===== */
@@ -540,7 +543,7 @@ const SRS_INTERVALS={1:1,2:2,3:4,4:7,5:15};
 const SRS_CAP=20; // bir tekrar oturumunda en çok kelime (boğulmamak için)
 let WORDINDEX=null;
 function wordIndex(){ if(WORDINDEX)return WORDINDEX; WORDINDEX={}; try{ Object.keys(VOCAB).forEach(function(t){ (VOCAB[t]||[]).forEach(function(d){ var k=String(d.w).toLowerCase(); if(!WORDINDEX[k])WORDINDEX[k]=Object.assign({topic:t},d); }); }); }catch(e){} return WORDINDEX; }
-function wordData(w){ return wordIndex()[String(w).toLowerCase()]||{w:w,pos:'',mean:'',ex:'',tr:''}; }
+function wordData(w){ var k=String(w).toLowerCase(); return wordIndex()[k]||(profile&&profile.wextra&&profile.wextra[k])||{w:w,pos:'',mean:'',ex:'',tr:''}; }
 function srsMap(){ if(!profile)return {}; profile.srs=profile.srs||{}; return profile.srs; }
 function enterSRS(w,topic,lvl){ if(!profile)return; var m=srsMap(); var k=String(w).toLowerCase(); if(m[k])return; m[k]={box:1,due:dayNumber()+1,topic:topic||'',lvl:lvl||''}; }
 /* SRS öncesi çalışılmış kelimeleri sisteme bir kez aktar (bugünden itibaren tekrara girsinler). */
@@ -607,11 +610,11 @@ function greetWelcome(has){ __greetText=greetText(has); const t=document.getElem
   if(window.__greetNow){ window.__greetNow=false; playGreet(); } /* avatar yeni seçildiyse hemen selam ver */ }
 function replayGreet(){ __greetSpoke=false; if(__greetAudioEl){try{__greetAudioEl.pause();__greetAudioEl.currentTime=0;}catch(e){}} playGreet(); }
 function avatarTap(){ if(!curAvatarId()){ scrAvatars(); return; } replayGreet(); }
-function scrWelcome(){ stopAll(); const has=!!profile;
+function scrWelcome(){ stopAll(); const has=profileValid();
   app.innerHTML=`<div class="screen welcome2">
     <div class="wtop" style="display:flex;flex-direction:column;align-items:center;width:100%">
       <div class="aikoAv" onclick="avatarTap()" title="Dokun" style="cursor:pointer;background:radial-gradient(circle at 50% 34%,#ffffff 0%,#fff2ec 60%,#ffe0d3 100%);box-shadow:0 14px 34px #c9503c55, 0 0 0 4px #ffffff40">${aikoAvatarHtml()}</div>
-      <div style="font-size:11px;color:#fff;font-weight:600;margin-top:6px">${curAvatarId()?('👆 '+tutorName()+'\'a dokun, seni selamlasın'):'👆 Önce avatarını seç'}</div>
+      <div style="font-size:11px;color:#fff;font-weight:600;margin-top:6px">${curAvatarId()?('👆 '+datif(tutorName())+' dokun, seni selamlasın'):'👆 Önce avatarını seç'}</div>
       <button class="avlink" onclick="scrAvatars()" style="color:#fff">${curAvatarId()?('🎭 Avatarın: '+tutorName()+' · değiştir'):'🎭 Avatarını seç'}</button>
       <h1 style="margin:2px 0 2px">Parlo</h1><p class="wsub" style="margin:0 0 14px">Günde 15 kelime · İngilizceni sakince büyüt</p>
       <div class="wgreet" style="display:flex;gap:10px;align-items:center;max-width:340px;margin:0 auto 14px;background:#ffffff;border:none;border-radius:16px;padding:11px 13px;text-align:left;box-shadow:0 10px 26px #b83c2e33">
@@ -624,7 +627,7 @@ function scrWelcome(){ stopAll(); const has=!!profile;
     </div>
     <div class="wbot" style="width:100%;display:flex;flex-direction:column;align-items:center">
       <div class="authbtns">
-        ${has?`<button class="primary" onclick="scrDashboard()">Devam et · ${profile.name}</button>
+        ${has?`<button class="primary" onclick="scrDashboard()">Devam et · ${esc(profile.name)}</button>
                <button class="ghost" onclick="newUser()">Yeni kullanıcı (sıfırdan)</button>`
              :`<button class="primary" onclick="scrRegister()">Hemen başla →</button>
                ${(API_BASE)?`<button class="ghost" onclick="scrLogin()">Zaten hesabım var · giriş yap</button>`:'<button class="ghost" onclick="scrRegister()">Nasıl çalışıyor? Dene</button>'}`}
@@ -1007,7 +1010,7 @@ function scrLevelResult(){ const l=profile.level;
 }
 
 /* ---- PANEL ---- */
-function scrDashboard(){ stopAll(); if(!profile)return scrWelcome();
+function scrDashboard(){ stopAll(); if(!profileValid())return scrRegister(); /* boş/bozuk profil ({} veya eksik ad/tarih) → kayıt akışı */
   const dn=dayNumber(); const locked=trialLocked();
   const tids=Object.keys(profile.studied||{}).filter(k=>profile.studied[k].length);
   const total=tids.reduce((a,k)=>a+profile.studied[k].length,0);
@@ -1017,7 +1020,7 @@ function scrDashboard(){ stopAll(); if(!profile)return scrWelcome();
   else banner=`<div class="tbanner warn"><span>Ücretsiz deneme · ${Math.min(dn,TRIAL_DAYS)}/${TRIAL_DAYS}. gün</span><button onclick="scrPaywall()">Üyelik</button></div>`;
   const last=profile.lastTopicId?TOPICS.find(t=>t.id===profile.lastTopicId):null;
   app.innerHTML=`<div class="screen dash"><div class="dashscroll">
-    <div class="dgreet"><h1>Merhaba ${profile.name} 🌿</h1><p>Katılım: ${fmtDate(profile.joinDate)} · ${dn}. günün · Seviye ${profile.level||'—'}</p></div>
+    <div class="dgreet"><h1>Merhaba ${esc(profile.name)} 🌿</h1><p>Katılım: ${fmtDate(profile.joinDate)} · ${dn}. günün · Seviye ${profile.level||'—'}</p></div>
     ${coachHtml()}
     <div class="statgrid">
       <div class="stat"><div class="n">${dn}</div><div class="l">gün</div></div>
@@ -1043,12 +1046,18 @@ function devReset(){ profile.subscribed=false; profile.devOffset=0; saveProfile(
 
 /* ---- ÜYELİK ---- */
 function scrPaywall(){ stopAll();
+  var _ended=(typeof trialLocked==='function')?trialLocked():false;
+  var _sub=!!(profile&&profile.subscribed);
+  var _title=_sub?'Üyeliğin aktif':(_ended?'Denemen tamamlandı':'Parlo Üyelik');
+  var _desc=_sub?'Üyeliğin aktif — istediğin an iptal edebilirsin.'
+            :(_ended?'Ücretsiz denemen bitti. Gelişimini kaydederek devam etmek için aylık üyeliğe geç.'
+                    :'Dilersen şimdi aylık üyeliğe geçebilirsin. (Deneme sürümünde tüm özellikler zaten açık.)');
   app.innerHTML=`<div class="screen paywall pw">
     <div class="big" style="font-size:44px">🔓</div>
-    <h1>Denemen tamamlandı</h1>
-    <p>3 günlük ücretsiz denemen bitti. Gelişimini kaydederek devam etmek için aylık üyeliğe geç.</p>
+    <h1>${_title}</h1>
+    <p>${_desc}</p>
     <div class="plan"><div><span class="price">₺100</span><span class="per"> / ay</span></div>
-      <ul><li>Sınırsız konu ve kelime</li><li>Günlük hikâye + eğitmenin sesiyle dinleme</li><li>İlerlemen ve seviyen kayıtlı</li><li>İstediğin an iptal</li></ul></div>
+      <ul><li>Tüm konulara erişim · günde 15 yeni kelime temposu</li><li>Günlük hikâye + eğitmenin sesiyle dinleme</li><li>İlerlemen ve seviyen kayıtlı</li><li>İstediğin an iptal</li></ul></div>
     <label style="display:flex;gap:8px;align-items:flex-start;max-width:320px;margin:14px auto 4px;font-size:12px;color:#6a5a52;text-align:left;cursor:pointer">
       <input type="checkbox" id="paySoz" style="margin-top:2px">
       <span><a href="mesafeli-satis.html" target="_blank">Mesafeli Satış Sözleşmesi</a>'ni, <a href="iptal-iade.html" target="_blank">İptal/İade Koşulları</a>'nı ve <a href="gizlilik.html" target="_blank">Gizlilik/KVKK</a> metnini okudum, kabul ediyorum.</span>
@@ -1094,8 +1103,8 @@ var __paywallShown=false;
 window.__on402=function(){ if(__paywallShown)return; __paywallShown=true; if(profile){ profile.subscribed=false; } if(typeof scrPaywall==='function') scrPaywall(); };
 async function ensureToken(){ if(getAuthToken()||!API_BASE||!(window.KelimeAPI&&KelimeAPI.anon))return; try{ var r=await KelimeAPI.anon(); if(r&&r.token){ setAuthToken(r.token); } }catch(e){} }
 var __reanonBusy=false; window.__reanon=function(){ if(__reanonBusy)return; __reanonBusy=true; ensureToken().then(function(){ __reanonBusy=false; }); };
-function boot(){ loadProfile(); const tok=getAuthToken(); if(tok&&window.KelimeAPI)KelimeAPI.setToken(tok); scrWelcome();
-  ensureToken().then(function(){ if(getAuthToken()&&API_BASE){ syncPull().then(function(ch){ if(ch) scrWelcome(); }); } });
+function boot(){ loadProfile(); restoreSaved(); restoreCustomTopic(); const tok=getAuthToken(); if(tok&&window.KelimeAPI)KelimeAPI.setToken(tok); scrWelcome();
+  ensureToken().then(function(){ if(getAuthToken()&&API_BASE){ syncPull().then(function(ch){ if(ch){ restoreSaved(); restoreCustomTopic(); scrWelcome(); } }); } });
   try{ if(new URLSearchParams(location.search).get('paid')!=null) checkPaidReturn(); }catch(e){} }
 
 /* ================= 0) KONU SEÇİMİ ================= */
@@ -1104,7 +1113,7 @@ function scrTopics(){ stopAll(); currentTopic=null;
     <div class="hdr"><button class="back" onclick="scrDashboard()">${profile?'‹ Panel':''}</button><span class="phase">Konular</span></div>
     <div class="welcome"><h1>Ne öğrenmek istersin? 🌿</h1><p>Bir konu seç — sana o alandan, en çok kullanılan kelimeleri getireceğim.</p></div>
     <div class="topics">${TOPICS.map((t,i)=>`
-      <div class="tcard" onclick="pickTopic(${i})">
+      <div class="tcard" role="button" tabindex="0" onclick="pickTopic(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pickTopic(${i});}">
         <div class="em">${t.emoji}</div>
         <div><div class="tt">${t.name}</div><div class="td">${t.desc}</div></div>
         <div class="cnt">${t.words.length} kelime</div>
@@ -1122,7 +1131,7 @@ function scrToday(mode){ stopAll(); if(!profile)return scrWelcome();
     <div class="content" style="padding-top:2px">
       ${(last&&!isNew)?`<button class="opt cont" onclick="continueTopic()">▶ Mevcuttan devam · ${last.emoji} ${last.name}</button>`:''}
       <div class="topics" style="margin-top:${(last&&!isNew)?'12px':'2px'}">${TOPICS.map((t,i)=>`
-        <div class="tcard" onclick="pickTopic(${i})">
+        <div class="tcard" role="button" tabindex="0" onclick="pickTopic(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pickTopic(${i});}">
           <div class="em">${t.emoji}</div>
           <div><div class="tt">${t.name}</div><div class="td">${t.desc}</div></div>
           <div class="cnt">${t.words.length} kelime</div>
@@ -1136,11 +1145,14 @@ function scrToday(mode){ stopAll(); if(!profile)return scrWelcome();
 
 /* ================= 1) KADRO SEÇİMİ ================= */
 let selIdx=0, seenN=0, knownN=0;
-function startSelect(){ roster=[]; selIdx=0; seenN=0; knownN=0; scrSelect(); }
+var SESS=5;
+/* Oturum boyutu: kalan günlük yeni-kelime hakkıyla sınırlı (14 doluyken 5'lik ders açıp 19'a çıkmasın). Özel içerik sınırsız. */
+function sessTarget(){ try{ if(currentTopic&&currentTopic.id==='custom')return 5; var rem=DAILY_NEW_CAP-newTodayCount(); return Math.max(1,Math.min(5,rem)); }catch(e){ return 5; } }
+function startSelect(){ roster=[]; selIdx=0; seenN=0; knownN=0; SESS=sessTarget(); scrSelect(); }
 function scrSelect(){ stopAll();
   app.innerHTML=`<div class="screen">
     <div class="hdr"><button class="back" onclick="scrTopics()">‹ Konular</button><span class="phase">${currentTopic.emoji} ${currentTopic.name} · Kadro seç</span></div>
-    <div class="prow"><div class="pips" id="pips"></div><div class="count"><b id="cnt">0</b>/5</div></div>
+    <div class="prow"><div class="pips" id="pips"></div><div class="count"><b id="cnt">0</b>/${SESS}</div></div>
     <div class="seen" id="seenl">Görülen: 0 · Bilinen (atlanan): 0</div>
     <div class="stage" id="stage"></div>
     <div class="actions">
@@ -1149,14 +1161,14 @@ function scrSelect(){ stopAll();
     </div>
     <div class="foothint">Kartı sola (biliyorum) / sağa (ekle) kaydırabilirsin</div>
   </div>`;
-  const pips=document.getElementById('pips'); for(let i=0;i<5;i++){const d=document.createElement('div');d.className='pip';pips.appendChild(d);}
+  const pips=document.getElementById('pips'); for(let i=0;i<SESS;i++){const d=document.createElement('div');d.className='pip';pips.appendChild(d);}
   selRender();
 }
 function selPips(){const pips=document.getElementById('pips'); if(pips)[...pips.children].forEach((p,i)=>p.classList.toggle('on',i<roster.length));}
 function selRender(){
   const stage=document.getElementById('stage'); if(!stage)return; stage.innerHTML='';
-  if(roster.length>=5 || selIdx>=WORDS.length) return scrCards();
-  const d=WORDS[selIdx], dec=decile(d.rank); let segs=''; for(let s=1;s<=10;s++)segs+=`<span class="seg ${s<=dec?'on':''}"></span>`;
+  if(roster.length>=SESS || selIdx>=WORDS.length) return scrCards();
+  const d=WORDS[selIdx]; var dec=decile(d.rank); var hasFreq=Number.isFinite(dec)&&dec>0; let segs=''; for(let s=1;s<=10;s++)segs+=`<span class="seg ${s<=dec?'on':''}"></span>`;
   const c=document.createElement('div'); c.className='card';
   c.innerHTML=`<div class="imgwrap">${artFor(d.w)}<span class="aitag">✨ AI görseli</span>
     <div class="hintswipe know">✓ BİLİYORUM</div><div class="hintswipe learn">＋ EKLE</div></div>
@@ -1164,7 +1176,7 @@ function selRender(){
       <div class="crow"><span class="cword">${d.w}</span><span class="lvl">Seviye ${d.lvl}</span></div>
       <div><span class="pos">${d.pos}</span></div>
       <div class="mean">${d.mean}</div>
-      <div class="metar"><span class="segs">${segs}</span><span class="freqlbl">sıklık ${dec}/10 · en sık %${dec*10}</span></div>
+      ${hasFreq?`<div class="metar"><span class="segs">${segs}</span><span class="freqlbl">sıklık ${dec}/10 · en sık %${dec*10}</span></div>`:''}
     </div>`;
   stage.appendChild(c); attachSwipe(c,()=>selDecide(false),()=>selDecide(true));
   loadSelImage(d,c);
@@ -1174,23 +1186,25 @@ function selRender(){
 function loadSelImage(d,card){ var word=(d&&d.w)||d; try{ var surl=staticImgURL(word); var probe=new Image();
   probe.onload=function(){ var iw=card&&card.querySelector('.imgwrap'); if(!iw||!iw.isConnected)return; var old=iw.querySelector('.model3d, svg, .wimg'); if(old)old.remove(); var img=document.createElement('img'); img.className='wimg'; img.alt=''; img.src=surl; iw.insertBefore(img,iw.firstChild); };
   probe.src=surl; }catch(e){} }
-function selDecide(add){ if(roster.length>=5||selIdx>=WORDS.length)return;
+var selBusy=false;
+function selDecide(add){ if(selBusy||roster.length>=SESS||selIdx>=WORDS.length)return;
   const stage=document.getElementById('stage'); if(!stage)return; const card=stage.querySelector('.card'); if(!card)return;
+  selBusy=true; /* animasyon/işlem bitene kadar yeni seçimi engelle (hızlı tıklamada aynı kart 3 kez eklenmesin) */
   card.style.transition='transform .22s,opacity .22s';card.style.transform=`translateX(${add?520:-520}px) rotate(${add?18:-18}deg)`;card.style.opacity=0;
   const decided=WORDS[selIdx];
   setTimeout(()=>{ seenN++; if(add){roster.push(decided);} else {knownN++; recordKnown(decided.w);} selIdx++;
     const cnt=document.getElementById('cnt'); if(cnt)cnt.textContent=roster.length;
     const sl=document.getElementById('seenl'); if(sl)sl.textContent=`Görülen: ${seenN} · Bilinen (atlanan): ${knownN}`;
-    selPips(); selRender(); },150);
+    selPips(); selRender(); selBusy=false; },150);
 }
 
 /* ================= 2) GÖRSEL KARTLAR ================= */
 let cardIdx=0, hideMode=false;
 function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
-  if(roster.length===0) roster=WORDS.slice(0,5);
+  if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s285</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s287</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1293,9 +1307,9 @@ function cardRender(){
   const d=roster[cardIdx], dec=decile(d.rank); let segs=''; for(let s=1;s<=10;s++)segs+=`<span class="seg ${s<=dec?'on':''}"></span>`;
   const c=document.createElement('div'); c.className='card'+(hideMode?' hidden':'');
   c.innerHTML=`<div class="imgwrap">${artFor(d.w)}<span class="aitag">✨ AI görsel</span>
-    <button class="save ${savedWords.has(d.w)?'on':''}" onclick="toggleSave('${d.w}')">${savedWords.has(d.w)?'♥':'♡'}</button></div>
+    <button class="save ${savedWords.has(d.w)?'on':''}" onclick="toggleSave(${jsq(d.w)})">${savedWords.has(d.w)?'♥':'♡'}</button></div>
     <div class="cbody">
-      <div class="crow"><span class="cword">${d.w}</span><button class="spk" onclick="say('${d.w}',false)">${SPKICON}</button></div>
+      <div class="crow"><span class="cword">${d.w}</span><button class="spk" onclick="say(${jsq(d.w)},false)">${SPKICON}</button></div>
       <div class="divider"></div>
       <div class="meanwrap"><div class="mean">${d.mean}</div><div class="reveal" onclick="this.parentElement.parentElement.parentElement.classList.remove('hidden')">👁 anlamı göster</div></div>
       <div class="ex">“${d.ex}”<br><span class="tr">${d.tr}</span></div>
@@ -1309,7 +1323,7 @@ function cardRender(){
   cardDots();
 }
 function toggleHide(){ hideMode=!hideMode; document.getElementById('tgl').textContent=hideMode?'Anlamı göster':'Anlamı gizle · kendini test et'; cardRender(); }
-function toggleSave(w){ if(savedWords.has(w))savedWords.delete(w); else savedWords.add(w); cardRender(); }
+function toggleSave(w){ if(savedWords.has(w))savedWords.delete(w); else savedWords.add(w); persistSaved(); cardRender(); }
 function cardGo(dir){ const ni=cardIdx+dir; if(ni<0)return; if(ni>=roster.length) return scrStory();
   const stage=document.getElementById('stage'); const card=stage.querySelector('.card');
   if(card){card.style.transition='transform .2s,opacity .2s';card.style.transform=`translateX(${dir>0?-360:360}px)`;card.style.opacity=0;}
@@ -1360,7 +1374,7 @@ function applyStoryTitle(t){ if(!t)return; var el=document.getElementById('stitl
 function renderStory(){
   const el=document.getElementById('story'); storyToks=[]; let html=''; const re=/([A-Za-z]+)|([^A-Za-z]+)/g; let m;
   while((m=re.exec(STORY))!==null){ if(m[1]){ const word=m[1], key=word.toLowerCase(), isKw=WMAP.hasOwnProperty(key);
-      html+=`<span class="tok${isKw?' kw':''}" data-start="${m.index}" ${isKw?`onclick="openSheet('${key}')"`:''}>${word}</span>`;
+      html+=`<span class="tok${isKw?' kw':''}" data-start="${m.index}" ${isKw?`onclick="openSheet(${jsq(key)})"`:''}>${word}</span>`;
       storyToks.push({start:m.index,end:m.index+word.length,key:isKw?key:null}); }
     else html+=m[2].replace(/\n/g,'<br>'); }
   el.innerHTML=html;
@@ -1393,7 +1407,7 @@ function openSheet(key){ curKey=key; const d=WMAP[key]; if(!d)return;
   document.getElementById('backdrop').classList.add('show'); document.getElementById('sheet').classList.add('show');
 }
 function closeSheet(){ document.getElementById('backdrop').classList.remove('show'); document.getElementById('sheet').classList.remove('show'); }
-function sheetSave(){ if(savedWords.has(curKey))savedWords.delete(curKey); else savedWords.add(curKey);
+function sheetSave(){ if(savedWords.has(curKey))savedWords.delete(curKey); else savedWords.add(curKey); persistSaved();
   const on=savedWords.has(curKey); const ss=document.getElementById('ssave'); ss.classList.toggle('on',on); ss.textContent=on?'♥ kaydedildi':'♡ kaydet';
   storyToks.forEach(t=>{if(t.key===curKey&&t.el)t.el.classList.toggle('saved',on);}); }
 
@@ -1435,7 +1449,7 @@ function produceS2(){
     <div class="content">
       <div class="prompt">Bu kelimelerle kısa bir hikâye yaz</div>
       <div class="promptsub">3–5 cümle yeter. Kelimeye dokunursan metne eklenir.</div>
-      <div class="bank" id="bank">${roster.map(d=>`<span class="bchip" data-w="${d.w}" onclick="bankTap('${d.w}')">${d.w}</span>`).join('')}</div>
+      <div class="bank" id="bank">${roster.map(d=>`<span class="bchip" data-w="${d.w}" onclick="bankTap(${jsq(d.w)})">${d.w}</span>`).join('')}</div>
       <textarea id="story2" rows="8" placeholder="Once upon a time...">${pStory}</textarea>
       <div class="usedcount" id="uc"></div>
     </div>
@@ -1499,10 +1513,11 @@ function aiGradeHtml(a){
 async function produceS3(){ stopAll();
   const res=correctText(pStory);
   const cleaned=res.text||("(Hikâye yazılmadı — örnek.) "+buildStory());
-  const chHtml = pStory.trim() ? (res.changes.length
-      ? `<div class="diffnote">✏️ <b>Düzeltmeler:</b> ${res.changes.map(c=>c.replace(/</g,'&lt;')).join(' · ')}</div>`
-      : `<div class="diffnote">✓ Belirgin bir yazım/dilbilgisi hatası bulunamadı.</div>`) : '';
   const willAI = !!(window.KelimeAPI && API_BASE && pStory.trim().length>1);
+  const chHtml = pStory.trim() ? (res.changes.length
+      ? `<div class="diffnote">✏️ <b>Hızlı kontrol:</b> ${res.changes.map(c=>c.replace(/</g,'&lt;')).join(' · ')}</div>`
+      : (willAI ? '' /* AI değerlendirmesi gelecek; yerel 'hata yok' ile çelişmesin */
+                : `<div class="diffnote">✓ Belirgin bir yazım/dilbilgisi hatası bulunamadı.</div>`)) : '';
   app.innerHTML=`<div class="screen">
     <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Üretim</span></div>
     ${pSteps()}
@@ -1564,7 +1579,7 @@ function revRender(){ const stage=document.getElementById('stage'); if(!stage)re
   const d=revList[revIdx]; const c=document.createElement('div'); c.className='card hidden';
   c.innerHTML=`<div class="imgwrap">${artFor(d.w)}<span class="aitag">🔁 Tekrar</span></div>
     <div class="cbody">
-      <div class="crow"><span class="cword">${d.w}</span><button class="spk" onclick="say('${d.w}',false)">${SPKICON}</button></div>
+      <div class="crow"><span class="cword">${d.w}</span><button class="spk" onclick="say(${jsq(d.w)},false)">${SPKICON}</button></div>
       <div class="divider"></div>
       <div class="meanwrap"><div class="mean">${d.mean||''}</div><div class="reveal" onclick="revReveal(this)">👁 anlamı göster</div></div>
       <div class="ex">${d.ex?('“'+d.ex+'”'):''}<br><span class="tr">${d.tr||''}</span></div>
@@ -1603,7 +1618,7 @@ function srsCardHtml(){ if(!profile)return ''; seedSRS(); var n=dueCount();
 /* ================= AIKO İLE KONUŞMA ================= */
 const AIKO_SVG=`<svg viewBox='0 0 100 100'><path d='M18 46 Q20 14 50 12 Q80 14 82 46 L82 60 Q82 40 50 40 Q18 40 18 60 Z' fill='#6b4a52'/><circle cx='50' cy='54' r='28' fill='#fce4dd'/><path d='M22 40 Q50 34 78 40 L78 30 Q50 20 22 30 Z' fill='#7d5560'/><circle cx='40' cy='54' r='4.5' fill='#4c403b'/><circle cx='60' cy='54' r='4.5' fill='#4c403b'/><circle cx='41.5' cy='52.5' r='1.4' fill='#fff'/><circle cx='61.5' cy='52.5' r='1.4' fill='#fff'/><circle cx='33' cy='62' r='4' fill='#f3b3ac' opacity='.7'/><circle cx='67' cy='62' r='4' fill='#f3b3ac' opacity='.7'/><path d='M43 64 Q50 70 57 64' fill='none' stroke='#c67' stroke-width='2.4' stroke-linecap='round'/></svg>`;
 let chatWords=[], chatIdx=-1, chatUsed=null, chatFixes=[], chatRec=null, chatListening=false;
-let chatMode='words', PHOTO=null, chatSeedWords=null;
+let chatMode='words', PHOTO=null, chatSeedWords=null, chatEnded=false, chatBusy=false;
 const PHOTO_QS=["What do you see in this picture?","What colours can you see?","Where do you think this place is?","What is happening in the picture?","How does this picture make you feel?","Tell me one more detail about it."];
 let chatHistory=[], chatTurns=0;
 const TOPIC_EN={ekonomi:'money and the economy',seyahat:'travel',muzik:'music',sohbet:'everyday small talk',kultur:'culture and the arts',teknoloji:'technology',saglik:'health and well-being',yemek:'food and cooking',kariyer:'work and careers',temel:'everyday basics',custom:'the words you are learning'};
@@ -1617,7 +1632,7 @@ function chatTargets(){ let learned=[];
   return pick;
 }
 function scrChat(opts){ stopAll(); primeTTS(); opts=opts||{}; const photo=opts.photo||null; chatMode=photo?'photo':'words';
-  chatWords=photo?[]:((chatSeedWords&&chatSeedWords.length)?chatSeedWords.slice():chatTargets()); chatSeedWords=null; chatIdx=-1; chatUsed=new Set(); chatFixes=[]; chatHistory=[]; chatTurns=0;
+  chatWords=photo?[]:((chatSeedWords&&chatSeedWords.length)?chatSeedWords.slice():chatTargets()); chatSeedWords=null; chatIdx=-1; chatUsed=new Set(); chatFixes=[]; chatHistory=[]; chatTurns=0; chatEnded=false; chatBusy=false;
   app.innerHTML=`<div class="screen">
     <div class="chdr"><button class="back" onclick="${photo?'scrPhoto()':'scrDashboard()'}">‹</button>
       <div class="cav" id="cav">${aikoAvatarHtml()}</div>
@@ -1670,15 +1685,22 @@ function chatPlayPause(){ var b=document.getElementById('cpp');
 function setStatusSafe(t){ const s=document.getElementById('cstatus'); if(s)s.textContent=t; }
 let ttsPrimed=false;
 function primeTTS(){ if(ttsPrimed||typeof speechSynthesis==='undefined')return; try{ speechSynthesis.resume(); const u=new SpeechSynthesisUtterance(' '); u.volume=0; speechSynthesis.speak(u); ttsPrimed=true; }catch(e){} }
-function cfmt(t){ return t.replace(/\*([^*]+)\*/g,'<em>$1</em>'); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+/* Satır-içi onclick için güvenli JS string literali (kesme işaretli kelimeler düğmeyi bozmasın: can't stand, what's up) */
+function jsq(s){ return "'"+String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'\\x3c')+"'"; }
+function cfmt(t){ return esc(t).replace(/\*([^*]+)\*/g,'<em>$1</em>'); }
 function cbot(t,fix,hint){ const c=document.getElementById('cchat'); if(!c)return; const d=document.createElement('div'); d.className='cmsg bot';
-  d.innerHTML=cfmt(t)+(fix?`<div class="fx">${fix}</div>`:'')+(hint?`<div class="chint" style="margin-top:6px;font-size:11.5px;color:var(--muted);line-height:1.4">💬 ${hint}</div>`:'')+`<br><button class="crespk" title="Dinle">🔊 dinle</button>`;
+  d.innerHTML=cfmt(t)+(fix?`<div class="fx">${fix}</div>`:'')+(hint?`<div class="chint" style="margin-top:6px;font-size:11.5px;color:var(--muted);line-height:1.4">💬 ${esc(hint)}</div>`:'')+`<br><button class="crespk" title="Dinle">🔊 dinle</button>`;
   c.appendChild(d); c.scrollTop=c.scrollHeight;
   const btn=d.querySelector('.crespk'); if(btn) btn.onclick=function(){ cspeak(t); };
   cspeak(t); }
 function cme(t){ const c=document.getElementById('cchat'); if(!c)return; const d=document.createElement('div'); d.className='cmsg me'; d.textContent=t; c.appendChild(d); c.scrollTop=c.scrollHeight; }
 function ctyping(on){ const c=document.getElementById('cchat'); if(!c)return; let t=document.getElementById('ctyp'); if(on){ if(!t){t=document.createElement('div');t.id='ctyp';t.className='ctyping';t.textContent=tutorName()+' yazıyor…';c.appendChild(t);c.scrollTop=c.scrollHeight;} } else if(t){t.remove();} }
-function cmarkUsed(text){ const low=' '+text.toLowerCase()+' '; chatWords.forEach(function(w){ const base=w.toLowerCase(); if(low.indexOf(base)>=0){ chatUsed.add(w); const ch=document.querySelector('.cwchip[data-w="'+w+'"]'); if(ch)ch.classList.add('on'); } }); }
+/* Tam sözcük eşleşmesi (basit çekimlerle): "carry" içindeki "car", "part" içindeki "art" hedef sayılmasın. */
+function wordUsed(text,w){ w=String(w||'').toLowerCase().trim(); if(!w)return false; var t=' '+String(text||'').toLowerCase().replace(/\s+/g,' ')+' ';
+  if(w.indexOf(' ')>=0) return t.indexOf(' '+w+' ')>=0 || (' '+String(text).toLowerCase()+' ').indexOf(w)>=0;
+  try{ var e=w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); return new RegExp('(^|[^a-zçğıöşü])'+e+'(s|es|ed|ing|d)?([^a-zçğıöşü]|$)','i').test(text); }catch(err){ return t.indexOf(' '+w+' ')>=0; } }
+function cmarkUsed(text){ chatWords.forEach(function(w){ if(wordUsed(text,w)){ chatUsed.add(w); const ch=document.querySelector('.cwchip[data-w="'+w+'"]'); if(ch)ch.classList.add('on'); } }); }
 function cpick(a){ return a[Math.floor((chatIdx+a.length)%a.length)]; }
 function chatNext(){ chatIdx++;
   const list=chatMode==='photo'?PHOTO_QS:chatWords;
@@ -1687,12 +1709,15 @@ function chatNext(){ chatIdx++;
   const w=chatWords[chatIdx];
   ctyping(true); setTimeout(function(){ ctyping(false); cbot(cpick(["Can you make a sentence with *"+w+"*?","Try using *"+w+"* in a sentence.","How would you use *"+w+"* today?"])); }, 700);
 }
-function chatUser(text){ text=(text||'').trim(); if(!text)return; cme(text);
+function chatUser(text){ text=(text||'').trim(); if(!text)return;
+  if(chatEnded){ return; }              /* "Bitir" sonrası giriş kapalı */
+  if(chatBusy){ return; }               /* önceki tur bitmeden yeni gönderim yok (yanıtlar sıralı kalsın) */
+  chatBusy=true; cme(text);
   if(chatMode==='photo'){ // fotoğraf modu: mevcut yerel akış (görsel bağlamı gerektiriyor)
     const r=correctText(text); r.changes.forEach(function(c){ if(c.indexOf('→')>=0 && chatFixes.indexOf(c)<0) chatFixes.push(c); });
     const ack=cpick(["Nice! ","Good! ","I can picture it! ","Lovely! "]);
-    const fix=(r.changes.length && r.text.toLowerCase()!==text.toLowerCase())?`💡 We usually say: <b>"${r.text}"</b>`:'';
-    ctyping(true); setTimeout(function(){ ctyping(false); cbot(ack, fix); setTimeout(chatNext, fix?1000:550); }, 650);
+    const fix=(r.changes.length && r.text.toLowerCase()!==text.toLowerCase())?('💡 We usually say: "<b>'+esc(r.text)+'</b>"'):'';
+    ctyping(true); setTimeout(function(){ ctyping(false); cbot(ack, fix); chatBusy=false; setTimeout(chatNext, fix?1000:550); }, 650);
     return;
   }
   cmarkUsed(text);
@@ -1711,23 +1736,24 @@ async function chatAIReply(text){
     var corr=(r.reply.correction_en||r.reply.correctionEn||'').trim();
     var hint=(r.reply.hint_tr||r.reply.hintTr||'').trim();
     var showCorr=corr && corr.toLowerCase()!==text.trim().toLowerCase();
-    var fix=showCorr?`💡 ${corr}`:'';
+    var fix=showCorr?('💡 '+esc(corr)):'';
     if(showCorr && chatFixes.indexOf(corr)<0) chatFixes.push(corr);
     cbot(reply, fix, hint);
-    chatHistory.push({role:'assistant',text:reply});
+    chatHistory.push({role:'assistant',text:reply}); chatBusy=false;
   }catch(e){ ctyping(false); chatLocalReply(text); }
 }
 function chatLocalReply(text){
   const r=correctText(text); r.changes.forEach(function(c){ if(c.indexOf('→')>=0 && chatFixes.indexOf(c)<0) chatFixes.push(c); });
-  const usedCur=chatWords.some(function(w){return text.toLowerCase().indexOf(w.toLowerCase())>=0;});
+  const usedCur=chatWords.some(function(w){return wordUsed(text,w);});
   const ack=usedCur?cpick(["Perfect! ","Great sentence! ","Well done! ","Nice! "]):cpick(["Good try! ","Okay! ","I see! "]);
-  const fix=(r.changes.length && r.text.toLowerCase()!==text.toLowerCase())?`💡 We usually say: <b>"${r.text}"</b>`:'';
-  ctyping(true); setTimeout(function(){ ctyping(false); cbot(ack, fix);
+  const fix=(r.changes.length && r.text.toLowerCase()!==text.toLowerCase())?('💡 We usually say: "<b>'+esc(r.text)+'</b>"'):'';
+  ctyping(true); setTimeout(function(){ ctyping(false); cbot(ack, fix); chatBusy=false;
     var next=chatWords.find(function(w){return !chatUsed.has(w);});
     if(next) setTimeout(function(){ if(document.getElementById('cchat')) cbot("Can you make a sentence with *"+next+"*?"); }, 950);
   }, 500);
 }
-function cfinish(){ ctyping(true); setTimeout(function(){ ctyping(false);
+function cfinish(){ chatEnded=true; chatBusy=false; try{ var _cc=document.querySelector('.ccomp'); if(_cc)_cc.style.display='none'; }catch(e){} /* "Bitir" sonrası giriş kapalı */
+  ctyping(true); setTimeout(function(){ ctyping(false);
   const fixes=chatFixes.length?chatFixes.map(function(f){return '• '+f;}).join('\n'):'✓ Belirgin bir hata yoktu, çok iyi!';
   if(chatMode==='photo'){
     cbot("Great description! 🌸 You talked about your photo really well.");
@@ -1781,6 +1807,7 @@ function scrPhotoWrite(){ stopAll();
         <div class="qprompt">Bu görseli İngilizce anlat. Ne görüyorsun, neler oluyor? (3–5 cümle)</div>
         <textarea id="pwrt" class="wtext" placeholder="Describe the picture in English…"></textarea>
         <div class="wcount" id="pwc">0 kelime</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">ℹ️ Değerlendirme yalnızca yazdığın İngilizce metnin dil bilgisi/akıcılığı üzerinedir; görselin içeriği doğrulanmaz.</div>
         <div id="pwfb"></div>
       </div>
     </div>
@@ -1828,7 +1855,8 @@ function downscaleImage(dataURL, maxDim, quality){ return new Promise(function(r
 }catch(e){ resolve(dataURL); } }); }
 function extractWords(text, n, level){ n=n||15; const map=buildPoolMap();
   const ui=Math.max(0,ORD.indexOf(level||'A2'));
-  const toks=(text||'').toLowerCase().match(/[a-z][a-z'\-]{2,}/g)||[];
+  /* Unicode-duyarlı: café/İstanbul/Türkiye parçalanmasın — tüm sözcük alınır, aksan sadeleştirilir (café→cafe, İstanbul→istanbul). */
+  const toks=((text||'').match(/[\p{L}][\p{L}'’\-]{2,}/gu)||[]).map(function(w){ try{ return w.normalize('NFKD').replace(/[̀-ͯ]/g,'').toLowerCase(); }catch(e){ return w.toLowerCase(); } });
   const freq={}; toks.forEach(function(w){ if(STOP.has(w))return; freq[w]=(freq[w]||0)+1; });
   const uniq=Object.keys(freq);
   // Havuzdaki (seviyesi bilinen) kelimeler: kullanıcının seviyesine yakınlığa, sonra sıklığa göre sırala
@@ -1847,12 +1875,17 @@ function sampleWords(n){ const map=buildPoolMap(); const keys=Object.keys(map); 
 }
 function upsertCustomTopic(words){ let t=TOPICS.find(function(x){return x.id==='custom';});
   if(t){ t.words=words; } else { t={id:'custom',emoji:'📄',name:'Senin içeriğin',desc:'Yüklediğin içerikten çıkan kelimeler',words:words,sIntro:'Here is a gentle little story using your new words.',sOutro:'And that is enough for today. Well done!'}; TOPICS.push(t); }
+  try{ if(profile){ profile.customWords=words; saveProfile(); } }catch(e){} /* kalıcı: yenileme sonrası özel deste kaybolmasın */
   return t;
 }
+/* Açılışta kalıcı özel desteyi ve ♥ işaretlerini geri yükle */
+function restoreSaved(){ try{ savedWords.clear(); ((profile&&profile.saved)||[]).forEach(function(w){ savedWords.add(w); }); }catch(e){} }
+function persistSaved(){ try{ if(profile){ profile.saved=Array.from(savedWords); saveProfile(); } }catch(e){} }
+function restoreCustomTopic(){ try{ if(profile && profile.customWords && profile.customWords.length){ upsertCustomTopic(profile.customWords); } }catch(e){} }
 function scrImport(){ stopAll(); IMPORT_TEXT=''; IMPORT_IMG=null; IMPORT_WORDS=null; IMPORT_SRC='import';
   app.innerHTML=`<div class="screen">
     <div class="hdr"><button class="back" onclick="scrToday()">‹ Bugün</button><span class="phase">Kendi içeriğin</span></div>
-    <div class="welcome"><h1>İçeriğinden öğren 📄</h1><p>Bir fotoğraf ya da metin dosyası yükle, ya da metni yapıştır; içinden <b>15 kelime</b> çıkarıp sana öğreteyim.</p></div>
+    <div class="welcome"><h1>İçeriğinden öğren 📄</h1><p>Bir fotoğraf ya da metin dosyası yükle, ya da metni yapıştır; içinden en çok kullanılan kelimeleri çıkarıp sana öğreteyim.</p></div>
     <div class="content photowrap">
       <div id="ipreview"></div>
       <input id="iimg" type="file" accept="image/*" style="display:none" onchange="onImport(this,'img')">
@@ -1935,8 +1968,8 @@ function scrImportResult(words, note){ stopAll(); IMPORT_WORDS=words;
   const backFn=(IMPORT_SRC==='photo')?'scrPhoto()':'scrImport()';
   const src=(IMPORT_SRC==='photo')?'Fotoğrafından':'İçeriğinden';
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><button class="back" onclick="${backFn}">‹ Geri</button><span class="phase">15 kelime</span></div>
-    <div class="welcome"><h1>Bu kelimeleri buldum ✨</h1><p>${src}, <b>${lvl}</b> seviyene göre seçtiğim 15 kelime. Öğren, ya da bunları kullanarak konuş/yaz.</p></div>
+    <div class="hdr"><button class="back" onclick="${backFn}">‹ Geri</button><span class="phase">${words.length} kelime</span></div>
+    <div class="welcome"><h1>Bu kelimeleri buldum ✨</h1><p>${src}, <b>${lvl}</b> seviyene göre seçtiğim ${words.length} kelime. Öğren, ya da bunları kullanarak konuş/yaz.</p></div>
     <div class="content">
       ${note?'<div class="subnote" style="margin:0 0 10px">'+esc(note)+'</div>':''}
       <div class="topics">${words.map(function(d){return '<div class="tcard"><div class="em" style="font-size:13px;color:var(--muted);min-width:30px;text-align:center">'+(d.lvl||'📄')+'</div><div style="flex:1"><div class="tt">'+esc(d.w)+'</div><div class="td">'+esc(d.mean||'—')+'</div></div></div>';}).join('')}</div>

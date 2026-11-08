@@ -545,7 +545,7 @@ let WORDINDEX=null;
 function wordIndex(){ if(WORDINDEX)return WORDINDEX; WORDINDEX={}; try{ Object.keys(VOCAB).forEach(function(t){ (VOCAB[t]||[]).forEach(function(d){ var k=String(d.w).toLowerCase(); if(!WORDINDEX[k])WORDINDEX[k]=Object.assign({topic:t},d); }); }); }catch(e){} return WORDINDEX; }
 function wordData(w){ var k=String(w).toLowerCase(); return wordIndex()[k]||(profile&&profile.wextra&&profile.wextra[k])||{w:w,pos:'',mean:'',ex:'',tr:''}; }
 function srsMap(){ if(!profile)return {}; profile.srs=profile.srs||{}; return profile.srs; }
-function enterSRS(w,topic,lvl){ if(!profile)return; var m=srsMap(); var k=String(w).toLowerCase(); if(m[k])return; m[k]={box:1,due:dayNumber()+1,topic:topic||'',lvl:lvl||''}; }
+function enterSRS(w,topic,lvl){ if(!profile)return; var m=srsMap(); var k=String(w).toLowerCase(); if(m[k])return; m[k]={box:1,due:dayNumber()+1,topic:topic||'',lvl:lvl||'',ts:Date.now()}; }
 /* SRS öncesi çalışılmış kelimeleri sisteme bir kez aktar (bugünden itibaren tekrara girsinler). */
 function seedSRS(){ if(!profile||profile.srsSeeded)return; var m=srsMap();
   if(profile.studied){ Object.keys(profile.studied).forEach(function(t){ (profile.studied[t]||[]).forEach(function(w){ var k=String(w).toLowerCase(); if(!m[k])m[k]={box:1,due:dayNumber(),topic:t,lvl:''}; }); }); }
@@ -557,6 +557,7 @@ function dueCount(){ return dueList().length; }
 function srsAnswer(w,correct){ if(!profile)return; var m=srsMap(); var k=String(w).toLowerCase(); var e=m[k]||{box:1};
   if(correct){ e.box=Math.min(5,(e.box||1)+1); e.due=dayNumber()+SRS_INTERVALS[e.box]; }
   else { e.box=1; e.due=dayNumber()+1; }
+  e.ts=Date.now(); /* son geçerli cevap zamanı → sunucu birleştirmesi en sonu seçsin */
   m[k]=e; saveProfile(); }
 
 /* ---- KARŞILAMA ---- */
@@ -1204,7 +1205,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s287</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s288</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1713,11 +1714,9 @@ function chatUser(text){ text=(text||'').trim(); if(!text)return;
   if(chatEnded){ return; }              /* "Bitir" sonrası giriş kapalı */
   if(chatBusy){ return; }               /* önceki tur bitmeden yeni gönderim yok (yanıtlar sıralı kalsın) */
   chatBusy=true; cme(text);
-  if(chatMode==='photo'){ // fotoğraf modu: mevcut yerel akış (görsel bağlamı gerektiriyor)
-    const r=correctText(text); r.changes.forEach(function(c){ if(c.indexOf('→')>=0 && chatFixes.indexOf(c)<0) chatFixes.push(c); });
+  if(chatMode==='photo'){ // fotoğraf modu: yerel düzeltici güvenilmez (doğru İngilizceyi bozabiliyor) → düzeltme GÖSTERME, sadece teşvik et
     const ack=cpick(["Nice! ","Good! ","I can picture it! ","Lovely! "]);
-    const fix=(r.changes.length && r.text.toLowerCase()!==text.toLowerCase())?('💡 We usually say: "<b>'+esc(r.text)+'</b>"'):'';
-    ctyping(true); setTimeout(function(){ ctyping(false); cbot(ack, fix); chatBusy=false; setTimeout(chatNext, fix?1000:550); }, 650);
+    ctyping(true); setTimeout(function(){ ctyping(false); cbot(ack); chatBusy=false; setTimeout(chatNext, 550); }, 650);
     return;
   }
   cmarkUsed(text);

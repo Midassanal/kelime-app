@@ -4,7 +4,7 @@
    çevrimdışıyken önbellekten açılır. Backend/API ve /img (farklı origin) dokunulmaz.
    Düzeltme (s287): yasal sayfa gezintisi artık './index.html' anahtarını EZMİYOR;
    her sayfa kendi yoluna önbelleklenir, böylece çevrimdışı uygulama girişi hep uygulamadır. */
-const CACHE = 'parlo-v3';
+const CACHE = 'parlo-v4';
 const ASSETS = [
   './', './index.html', './manifest.json',
   './icon-192.png', './icon-512.png', './icon-180.png', './icon-32.png',
@@ -32,11 +32,17 @@ self.addEventListener('fetch', (e) => {
 
   if (req.mode === 'navigate') {
     const isLegal = LEGAL.test(url.pathname);
+    // Uygulama girişi: kök yol ya da .../index.html (ör. /kelime-app/ veya /kelime-app/index.html).
+    const isAppEntry = url.pathname.endsWith('/') || /\/index\.html$/.test(url.pathname);
     e.respondWith(
       fetch(req).then((r) => {
         const cl = r.clone();
-        // Yasal sayfa KENDİ yoluna; uygulama girişi './index.html' anahtarına.
-        caches.open(CACHE).then((c) => c.put(isLegal ? req : './index.html', cl));
+        if (isLegal) {
+          caches.open(CACHE).then((c) => c.put(req, cl)); // yasal sayfa kendi yoluna
+        } else if (isAppEntry && r && r.ok && r.status === 200) {
+          caches.open(CACHE).then((c) => c.put('./index.html', cl)); // SADECE başarılı uygulama girişi index'i günceller
+        }
+        // 404, manifest gezintisi veya bilinmeyen yol: './index.html' ÖNBELLEĞİ EZİLMEZ.
         return r;
       }).catch(() => {
         if (isLegal) return caches.match(req).then((r) => r || caches.match('./index.html'));

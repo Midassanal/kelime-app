@@ -478,9 +478,11 @@ var __SILENT_WAV='data:audio/wav;base64,UklGRqQHAABXQVZFZm10IBAAAAABAAEAQB8AAIA+
 function unlockTutorAudio(){ if(__audioUnlocked)return; try{ var a=tutorAudioEl(); a.src=__SILENT_WAV; a.muted=true; var p=a.play(); if(p&&p.then){ p.then(function(){ try{a.pause();a.currentTime=0;}catch(e){} a.muted=false; __audioUnlocked=true; }).catch(function(){ a.muted=false; }); } else { try{a.pause();}catch(e){} a.muted=false; __audioUnlocked=true; } }catch(e){} }
 try{ window.addEventListener('pointerdown',unlockTutorAudio,{capture:true}); window.addEventListener('touchstart',unlockTutorAudio,{capture:true}); }catch(e){}
 function browserSay(t,done){ try{ if(typeof speechSynthesis==='undefined'){ if(done)done(); return; } speechSynthesis.cancel(); if(!VOICE)pickVoice(); var u=new SpeechSynthesisUtterance(String(t)); u.lang='en-US'; if(VOICE)u.voice=VOICE; u.rate=0.95; u.pitch=1; u.onend=function(){ if(done)done(); }; try{speechSynthesis.resume();}catch(_){} setTimeout(function(){try{speechSynthesis.speak(u);}catch(e){}},40);}catch(e){ if(done)done(); } }
+var __ttsSeq=0;
 function tutorSpeak(text,done){ text=String(text==null?'':text); if(!text.trim()){ if(done)done(); return; }
+  var myseq=++__ttsSeq; /* en son istenen seslendirme kazanır; geciken eski yanıt oynatıcıyı devralmasın */
   var voice=(typeof avatarVoice==='function')?avatarVoice():'nova'; var key=voice+'|'+text;
-  function playUrl(url){ try{ try{speechSynthesis.cancel();}catch(e){} var a=tutorAudioEl(); try{a.pause();}catch(e){} a.onended=function(){ if(done)done(); }; a.muted=false; a.src=url; var p=a.play(); if(p&&p.catch)p.catch(function(){ browserSay(text,done); }); }catch(e){ browserSay(text,done); } }
+  function playUrl(url){ if(myseq!==__ttsSeq){ if(done)done(); return; } try{ try{speechSynthesis.cancel();}catch(e){} var a=tutorAudioEl(); try{a.pause();}catch(e){} a.onended=function(){ if(done)done(); }; a.muted=false; a.src=url; var p=a.play(); if(p&&p.catch)p.catch(function(){ browserSay(text,done); }); }catch(e){ browserSay(text,done); } }
   if(API_BASE && window.KelimeAPI && KelimeAPI.tts){
     if(__ttsMem[key]){ playUrl(__ttsMem[key]); return; }
     KelimeAPI.tts(text,voice,(typeof avatarStyle==='function')?avatarStyle():undefined).then(function(r){ if(r&&r.audio){ blobToDataURL(r.audio).then(function(durl){ if(durl){ __ttsMem[key]=durl; playUrl(durl); } else browserSay(text,done); }); } else browserSay(text,done); }).catch(function(){ browserSay(text,done); });
@@ -944,7 +946,17 @@ function speakRec(){ const el=document.getElementById('sptr'); const b=document.
     startSpeakSTT();
   }).catch(function(){ if(el)el.textContent='(Mikrofon izni verilmedi — izin verip tekrar dene, ya da yüksek sesle oku ve Bitir\'e bas.)'; });
 }
-async function finishSpeak(){ const btn=document.querySelector('.footer .primary'); stopSpeakRec(); if(sprec){try{sprec.stop();}catch(e){}sprec=null;}
+/* Kaydı durdur ve ses dosyası (blob) hazır olana kadar BEKLE — "Bitir"e kayıt sürerken basılırsa değerlendirme kaçmasın. */
+function finishRecording(){ return new Promise(function(resolve){
+  if(!(mediaRec && mediaRec.state==='recording')){ resolve(); return; }
+  var done=false; var prev=mediaRec.onstop;
+  var to=setTimeout(function(){ if(!done){ done=true; resolve(); } },4000);
+  mediaRec.onstop=function(ev){ try{ if(prev)prev.call(mediaRec,ev); }finally{ if(!done){ done=true; clearTimeout(to); setTimeout(resolve,40); } } };
+  try{ stopSpeakRec(); }catch(e){ if(!done){ done=true; clearTimeout(to); resolve(); } }
+}); }
+async function finishSpeak(){ const btn=document.querySelector('.footer .primary');
+  if(btn){ btn.disabled=true; btn.textContent='Kayıt tamamlanıyor…'; }
+  await finishRecording(); if(sprec){try{sprec.stop();}catch(e){}sprec=null;} if(btn){ btn.disabled=false; }
   // Kayıt varsa backend'e (Whisper) gönder → transkript + CEFR; seviyeye katılır.
   if(T.speakBlob && API_BASE && window.KelimeAPI && KelimeAPI.gradeSpeakingAudio){
     if(btn){ btn.disabled=true; btn.textContent='Konuşman değerlendiriliyor…'; }
@@ -1089,7 +1101,9 @@ async function subscribeNow(){
 /* Ödeme dönüşü (?paid=1) → aboneliği sunucudan doğrula */
 async function checkPaidReturn(){ try{ var q=new URLSearchParams(location.search); if(q.get('paid')==null)return;
   history.replaceState(null,'',location.pathname);
-  var email=(profile&&profile.email)||''; if(email && API_BASE && window.KelimeAPI){ var s=await KelimeAPI.payStatus(email); if(s&&s.active){ profile.subscribed=true; saveProfile(); } }
+  var email=(profile&&profile.email)||''; if(email && API_BASE && window.KelimeAPI){ var s=await KelimeAPI.payStatus(email);
+    // Sadece AÇIK yanıt yerel durumu günceller (ağ hatası/offline dokunmaz): active:true→abone, active:false→pasif.
+    if(s && !s.offline && !s.error && typeof s.active!=='undefined'){ profile.subscribed=!!s.active; saveProfile(); } }
   scrDashboard(); }catch(e){} }
 function gateStart(fn){ if(trialLocked()){ pendingStart=fn; scrPaywall(); } else fn(); }
 function startTopic(t){ if(t&&t.id!=='custom'&&newCapReached()){ return scrDailyCap(); } currentTopic=t;
@@ -1205,7 +1219,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s288</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s289</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>

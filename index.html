@@ -736,8 +736,18 @@ async function doLogin(){ const email=(document.getElementById('lemail').value||
   if(!API_BASE||!window.KelimeAPI){ if(note)note.textContent='Sunucu bağlı değil — yerel modda giriş yapılamaz.'; return; }
   if(btn){btn.disabled=true;btn.textContent='Giriş yapılıyor…';}
   try{ const r=await KelimeAPI.login(email,password);
-    if(r&&r.token){ setAuthToken(r.token); if(r.user&&r.user.profile&&Object.keys(r.user.profile).length){ profile=r.user.profile; try{localStorage.setItem(PKEY,JSON.stringify(profile));}catch(e){} }
-      await syncPull(); return scrDashboard(); }
+    if(r&&r.token){
+      /* HESAP AYRIMI (P1): başka bir hesabın yerel profili, favorileri ve bekleyen yazması bu hesaba TAŞINMASIN. */
+      if(_pushT){ clearTimeout(_pushT); _pushT=null; }               /* önceki hesabın bekleyen (debounce) yazımını iptal et */
+      setAuthToken(r.token);
+      var sp=(r.user&&r.user.profile&&Object.keys(r.user.profile).length)?r.user.profile:null;
+      profile=sp;                                                     /* bu hesabın sunucu profili; boşsa null → sıfırdan (önceki profil taşınmaz) */
+      try{ if(profile) localStorage.setItem(PKEY,JSON.stringify(profile)); else localStorage.removeItem(PKEY); }catch(e){}
+      try{ var _ci=TOPICS.findIndex(function(x){return x.id==='custom';}); if(_ci>=0) TOPICS.splice(_ci,1); }catch(e){} /* önceki hesabın özel konusunu kaldır */
+      restoreSaved(); restoreCustomTopic();                           /* favori + özel konu bu hesabın profilinden yeniden kurulsun */
+      if(profileValid()) return scrDashboard();
+      return scrRegister();                                           /* boş/eksik profil → kayıt/seviye testi (token korunur; doRegister upgrade eder) */
+    }
     if(note)note.textContent=(r&&r.error)?r.error:'Giriş başarısız.';
   }catch(e){ if(note)note.textContent='Bağlantı hatası.'; }
   if(btn){btn.disabled=false;btn.textContent='Giriş yap →';}
@@ -1016,17 +1026,32 @@ function finishRecording(){ return new Promise(function(resolve){
 async function finishSpeak(){ const btn=document.querySelector('.footer .primary');
   if(btn){ btn.disabled=true; btn.textContent='Kayıt tamamlanıyor…'; }
   var recOk=await finishRecording(); if(sprec){try{sprec.stop();}catch(e){}sprec=null;} if(btn){ btn.disabled=false; btn.textContent='Bitir'; }
-  // Kayıt başladı ama dosya hiç hazır olmadı (tarayıcı durdurma olayı gelmedi) → kullanıcıya haber ver, sessizce geçme.
-  if(!recOk && !(T&&T.speakBlob)){ var sel=document.getElementById('sptr'); if(sel)sel.innerHTML='⚠️ Kayıt tamamlanamadı — mikrofona tekrar dokunup dene. (Yine olmazsa Bitir\'e tekrar bas, bu bölümü atlarız.)'; return; }
-  // Kayıt varsa backend'e (Whisper) gönder → transkript + CEFR; seviyeye katılır.
-  if(T.speakBlob && API_BASE && window.KelimeAPI && KelimeAPI.gradeSpeakingAudio){
+  var sel=document.getElementById('sptr');
+  var MIN_AUDIO=1200; /* backend ile aynı eşik: altında kayıt "boş/çok kısa" sayılır */
+  var hasAudio=!!(T && T.speakBlob && T.speakBlob.size>=MIN_AUDIO);
+  // Kayıt yeterliyse backend'e (Whisper) gönder → transkript + CEFR; seviyeye katılır.
+  var apiNoSpeech=false;
+  if(hasAudio && API_BASE && window.KelimeAPI && KelimeAPI.gradeSpeakingAudio){
     if(btn){ btn.disabled=true; btn.textContent='Konuşman değerlendiriliyor…'; }
-    const el=document.getElementById('sptr');
     try{ const r=await KelimeAPI.gradeSpeakingAudio(T.speakBlob,(profile&&profile.level)||'A2');
       if(r && r.result && !r.mock && !r.offline && !r.error){ T.speakApi=r.result; if(r.transcript)T.speakTxt=r.transcript;
-        if(el && r.transcript) el.innerHTML='✓ Duydum: “'+esc(r.transcript)+'”'; }
+        if(sel && r.transcript) sel.innerHTML='✓ Duydum: “'+esc(r.transcript)+'”'; }
+      else if(r && (r.error==='empty_audio'||r.error==='no_speech')){ apiNoSpeech=true; T.__spkMsg=r.message||'Sesini net alamadım.'; }
+      /* r.mock / r.offline / diğer hatalar: kullanıcının suçu değil → bölümü bloklamadan geç */
     }catch(e){}
-    if(btn){ btn.disabled=false; }
+    if(btn){ btn.disabled=false; btn.textContent='Bitir'; }
+  }
+  // Kullanılabilir konuşma girdisi yok (hiç/çok kısa kayıt VEYA "anlayamadım"): zaman aşımıyla AYNI yeniden-dene/atla akışı.
+  var usable = !!(T && T.speakApi) || (hasAudio && !apiNoSpeech);
+  if(!usable){
+    T.spkTries=(T.spkTries||0)+1;
+    if(T.spkTries<2){
+      var msg = apiNoSpeech ? ('⚠️ '+esc(T.__spkMsg)+' Mikrofona tekrar dokunup biraz daha yüksek ve net konuş.')
+                            : '⚠️ Kayıt alınamadı — mikrofona tekrar dokunup dene.';
+      if(sel) sel.innerHTML = msg+' (Yine olmazsa Bitir\'e tekrar bas, bu bölümü atlarız.)';
+      return;
+    }
+    /* ikinci kez Bitir: kullanıcı bilinçli olarak konuşma bölümünü atlıyor → devam et */
   }
   finishLT(); }
 function cefrOrd(s){ try{ var m=String(s||'').toUpperCase().match(/[ABC][12]/); return m?ORD.indexOf(m[0]):-1; }catch(e){ return -1; } }
@@ -1280,7 +1305,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s296</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s297</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1399,7 +1424,7 @@ function cardRender(){
   cardDots();
 }
 function toggleHide(){ hideMode=!hideMode; document.getElementById('tgl').textContent=hideMode?'Anlamı göster':'Anlamı gizle · kendini test et'; cardRender(); }
-function toggleSave(w){ if(savedWords.has(w))savedWords.delete(w); else savedWords.add(w); persistSaved(); cardRender(); }
+function toggleSave(w){ if(savedWords.has(w))savedWords.delete(w); else savedWords.add(w); touchSavedMeta(w); persistSaved(); cardRender(); }
 function cardGo(dir){ const ni=cardIdx+dir; if(ni<0)return; if(ni>=roster.length) return scrStory();
   const stage=document.getElementById('stage'); const card=stage.querySelector('.card');
   if(card){card.style.transition='transform .2s,opacity .2s';card.style.transform=`translateX(${dir>0?-360:360}px)`;card.style.opacity=0;}
@@ -1483,7 +1508,7 @@ function openSheet(key){ curKey=key; const d=WMAP[key]; if(!d)return;
   document.getElementById('backdrop').classList.add('show'); document.getElementById('sheet').classList.add('show');
 }
 function closeSheet(){ document.getElementById('backdrop').classList.remove('show'); document.getElementById('sheet').classList.remove('show'); }
-function sheetSave(){ if(savedWords.has(curKey))savedWords.delete(curKey); else savedWords.add(curKey); persistSaved();
+function sheetSave(){ if(savedWords.has(curKey))savedWords.delete(curKey); else savedWords.add(curKey); touchSavedMeta(curKey); persistSaved();
   const on=savedWords.has(curKey); const ss=document.getElementById('ssave'); ss.classList.toggle('on',on); ss.textContent=on?'♥ kaydedildi':'♡ kaydet';
   storyToks.forEach(t=>{if(t.key===curKey&&t.el)t.el.classList.toggle('saved',on);}); }
 
@@ -1953,7 +1978,12 @@ function upsertCustomTopic(words){ let t=TOPICS.find(function(x){return x.id==='
   return t;
 }
 /* Açılışta kalıcı özel desteyi ve ♥ işaretlerini geri yükle */
-function restoreSaved(){ try{ savedWords.clear(); ((profile&&profile.saved)||[]).forEach(function(w){ savedWords.add(w); }); }catch(e){} }
+function restoreSaved(){ try{ savedWords.clear(); ((profile&&profile.saved)||[]).forEach(function(w){ savedWords.add(w); });
+  /* Eski profil (savedMeta yok) → mevcut favorilerden tohumla ki bundan sonra kayıt-düzeyinde birleştirilebilsin. */
+  if(profile){ if(!profile.savedMeta||typeof profile.savedMeta!=='object') profile.savedMeta={}; savedWords.forEach(function(w){ if(!profile.savedMeta[w]) profile.savedMeta[w]={s:true,t:0}; }); }
+}catch(e){} }
+/* Favori değişimini kelime başına zaman damgasıyla işaretle (eşzamanlı eklemeler kaybolmasın, kaldırmalar kalıcı olsun). */
+function touchSavedMeta(w){ try{ if(!profile)return; if(!profile.savedMeta||typeof profile.savedMeta!=='object')profile.savedMeta={}; profile.savedMeta[w]={s:savedWords.has(w),t:Date.now()}; }catch(e){} }
 function persistSaved(){ try{ if(profile){ profile.saved=Array.from(savedWords); saveProfile(); } }catch(e){} }
 function restoreCustomTopic(){ try{ if(profile && profile.customWords && profile.customWords.length){ upsertCustomTopic(profile.customWords); } }catch(e){} }
 function scrImport(){ stopAll(); IMPORT_TEXT=''; IMPORT_IMG=null; IMPORT_WORDS=null; IMPORT_SRC='import';

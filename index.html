@@ -475,7 +475,7 @@ var __tutorAudio=null, __ttsMem={}, __audioUnlocked=false;
 function tutorAudioEl(){ if(!__tutorAudio){ __tutorAudio=new Audio(); try{__tutorAudio.setAttribute('playsinline','');}catch(e){} } return __tutorAudio; }
 /* iOS otomatik oynatmayı engeller: ilk dokunuşta tek ses elementini "aç", sonra hep onu kullan → sonraki oynatmalar (sohbet vb.) çalışır. */
 var __SILENT_WAV='data:audio/wav;base64,UklGRqQHAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YYAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-function unlockTutorAudio(){ if(__audioUnlocked)return; try{ var a=tutorAudioEl(); a.src=__SILENT_WAV; a.muted=true; var p=a.play(); if(p&&p.then){ p.then(function(){ try{a.pause();a.currentTime=0;}catch(e){} a.muted=false; __audioUnlocked=true; }).catch(function(){ a.muted=false; }); } else { try{a.pause();}catch(e){} a.muted=false; __audioUnlocked=true; } }catch(e){} }
+function unlockTutorAudio(){ if(__audioUnlocked)return; try{ audioCtx(); waResume(); }catch(e){} try{ var a=tutorAudioEl(); a.src=__SILENT_WAV; a.muted=true; var p=a.play(); if(p&&p.then){ p.then(function(){ try{a.pause();a.currentTime=0;}catch(e){} a.muted=false; __audioUnlocked=true; }).catch(function(){ a.muted=false; }); } else { try{a.pause();}catch(e){} a.muted=false; __audioUnlocked=true; } }catch(e){} }
 try{ window.addEventListener('pointerdown',unlockTutorAudio,{capture:true}); window.addEventListener('touchstart',unlockTutorAudio,{capture:true}); }catch(e){}
 function browserSay(t,done){ try{ if(typeof speechSynthesis==='undefined'){ if(done)done(); return; } speechSynthesis.cancel(); if(!VOICE)pickVoice(); var u=new SpeechSynthesisUtterance(String(t)); u.lang='en-US'; if(VOICE)u.voice=VOICE; u.rate=Math.max(0.5,Math.min(1.5,0.95*userSpeed())); u.pitch=1; u.onend=function(){ if(done)done(); }; try{speechSynthesis.resume();}catch(_){} setTimeout(function(){try{speechSynthesis.speak(u);}catch(e){}},40);}catch(e){ if(done)done(); } }
 var __ttsSeq=0;
@@ -486,7 +486,7 @@ function tutorSpeak(text,done){ text=String(text==null?'':text); if(!text.trim()
   function fb(){ if(stale()){ if(done)done(); return; } browserSay(text,done); } /* yedek ses de sıra kontrolünden geçsin */
   function playUrl(url){ if(stale()){ if(done)done(); return; } try{ try{speechSynthesis.cancel();}catch(e){} var a=tutorAudioEl(); try{a.pause();}catch(e){} a.onended=function(){ if(done)done(); }; a.muted=false; a.src=url;
     try{ a.playbackRate=userSpeed(); a.preservesPitch=true; a.mozPreservesPitch=true; a.webkitPreservesPitch=true; }catch(e){} /* hız: perdeyi koru */
-    try{ a.volume=avatarVol(); }catch(e){} /* avatar ses dengesi */
+    try{ if(!applyAvatarLevel(a)){ a.volume=avatarVol(); } }catch(e){} /* avatar ses dengesi: Web Audio kazancı, olmazsa element sesi */
     var p=a.play(); if(p&&p.catch)p.catch(function(){ fb(); }); }catch(e){ fb(); } }
   if(API_BASE && window.KelimeAPI && KelimeAPI.tts){
     if(__ttsMem[key]){ playUrl(__ttsMem[key]); return; }
@@ -577,8 +577,43 @@ function userSpeed(){ var s=(profile&&profile.speed); if(s==null){ try{ s=parseF
 function setSpeed(v){ v=Math.max(0.6,Math.min(1.5,Number(v)||1)); try{ localStorage.setItem('parlo_speed',String(v)); }catch(e){} if(profile){ profile.speed=v; saveProfile(); } if(document.querySelector('.spdsel')) scrAvatars(); }
 /* Avatarlar arası ses seviyesi farkını azaltmak için kaba ses çarpanı (0..1, yalnızca KISMA — güvenli, bozma riski yok).
    Ölçüm: Ela (f2) en yüksek (−19.5 LUFS), Can (m2) enerjik/hızlı. Kesin eşitleme için 6 avatarın LUFS'u gerekir. */
-var AVOL={ f1:1.0, f2:0.70, f3:1.0, m1:1.0, m2:0.85, m3:1.0 };
+var AVOL={ f1:1.0, f2:1.0, f3:1.0, m1:1.0, m2:1.0, m3:1.0 }; /* element-ses yedeği de nötr (sunucu dengeliyor) */
 function avatarVol(){ var v=AVOL[curAvatarId()]; return (typeof v==='number')?v:1.0; }
+/* === Ses seviyesi dengesi (Web Audio) ===
+   Ölçülen İngilizce LUFS'a göre her avatarı ~-23 LUFS hedefine yaklaştıran DOĞRUSAL kazanç.
+   AVOL yalnızca kısabildiği için Nur gibi kısık sesleri yükseltemiyordu; Web Audio ile >1 kazanç mümkün.
+   Üstüne bir limiter (DynamicsCompressor) koyarak yükseltmenin tepe kırpmasını (clipping) önlüyoruz.
+   Web Audio kurulamazsa (eski iOS vb.) sessizce AVOL/element sesine geri düşülür — ses asla kesilmez.
+   NOT: Kalıcı denge sunucu tarafında (loudnorm) yapılınca bu çarpanlar 1.0'a indirilecek. */
+/* s296: Kalıcı ses dengesi SUNUCU tarafında (loudnorm, -23 LUFS) yapılıyor.
+   Bu yüzden istemci kazanç katmanı KAPALI tutulur — açık olsaydı limiter, sunucunun
+   normalize ettiği sesi tekrar işleyip bozardı (çift işlem). Sunucu normalizasyonunu
+   kapatırsan WA_ENABLED=true + aşağıdaki AGAIN çarpanlarıyla istemci tarafı yeniden devreye girer. */
+var WA_ENABLED=false;
+var AGAIN={ f1:1.0, f2:1.0, f3:1.0, m1:1.0, m2:1.0, m3:1.0 }; /* istemci kazancı nötr (sunucu dengeliyor) */
+function avatarGain(){ var v=AGAIN[curAvatarId()]; return (typeof v==='number')?v:1.0; }
+var __actx=null, __waOK=true;
+function audioCtx(){ if(__actx)return __actx; if(!__waOK)return null; try{ var AC=window.AudioContext||window.webkitAudioContext; if(!AC){ __waOK=false; return null; } __actx=new AC(); return __actx; }catch(e){ __waOK=false; return null; } }
+function waResume(){ try{ if(__actx && __actx.state==='suspended') __actx.resume(); }catch(e){} }
+function wireAudio(el){ /* elementi kazanç+limiter zincirine bağlar; kazanç düğümünü döndürür, olmazsa null */
+  if(!WA_ENABLED || !__waOK || !el) return null;
+  try{ if(el.__waGain) return el.__waGain; }catch(e){ return null; }
+  try{
+    var ctx=audioCtx(); if(!ctx) return null;
+    var src=ctx.createMediaElementSource(el);
+    var gain=ctx.createGain();
+    var lim=ctx.createDynamicsCompressor();
+    try{ lim.threshold.value=-6; lim.knee.value=0; lim.ratio.value=20; lim.attack.value=0.003; lim.release.value=0.2; }catch(e){}
+    src.connect(gain); gain.connect(lim); lim.connect(ctx.destination);
+    el.__waSrc=src; el.__waGain=gain; el.__waLim=lim;
+    return gain;
+  }catch(e){ __waOK=false; return null; }
+}
+function applyAvatarLevel(el){ /* Web Audio varsa kazanç uygula + element sesini 1.0 yap; yoksa false */
+  var g=wireAudio(el);
+  if(g){ try{ g.gain.value=avatarGain(); el.volume=1; waResume(); return true; }catch(e){} }
+  return false;
+}
 /* Her avatara kendine özgü, COŞKULU bir anlatım tarzı (backend'e talimat olarak gönderilir). */
 function avatarStyle(){ var id=curAvatarId();
   var base='Speak in the SAME LANGUAGE as the text — never translate or switch language. HIGH energy, upbeat, cheerful and motivating, like an excited coach who truly believes in the learner. Clearly vary your pitch and pace, smile through your voice, and put strong emphasis on key words. Never flat, monotone, sleepy or robotic. ';
@@ -600,13 +635,13 @@ function pickTRVoice(male){ try{ const vs=(window.speechSynthesis&&speechSynthes
 (function(){ if(!('speechSynthesis'in window))return; try{__ttsVoice=pickTRVoice();}catch(e){} try{speechSynthesis.onvoiceschanged=function(){__ttsVoice=pickTRVoice();};}catch(e){} })();
 function speakGreet(){ try{ if(!('speechSynthesis'in window)||!__greetText)return; speechSynthesis.cancel();
   var male=avatarGender()==='m'; const v=pickTRVoice(male)||__ttsVoice; const parts=(__greetText.match(/[^.!?]+[.!?]*/g)||[__greetText]).map(function(x){return x.trim();}).filter(Boolean);
-  parts.forEach(function(p,i){ const u=new SpeechSynthesisUtterance(p); if(v){u.voice=v;u.lang=v.lang;}else u.lang='tr-TR'; u.rate=1.02;u.pitch=male?0.86:1.16;u.volume=1; if(i===0)u.onstart=function(){__greetSpoke=true;}; speechSynthesis.speak(u); }); }catch(e){} }
+  parts.forEach(function(p,i){ const u=new SpeechSynthesisUtterance(p); if(v){u.voice=v;u.lang=v.lang;}else u.lang='tr-TR'; u.rate=Math.max(0.5,Math.min(1.5,1.02*userSpeed()));u.pitch=male?0.86:1.16;u.volume=1; if(i===0)u.onstart=function(){__greetSpoke=true;}; speechSynthesis.speak(u); }); }catch(e){} }
 function greetText(has){ if(has&&profile&&profile.name) return 'Merhaba '+profile.name+'! Bugün de çalışmaya hazır mısın? Güzel ve eğlenceli bir derse başlayalım mı?';
   return 'Merhaba, hoş geldin. Yeni ve eğlenceli bir yola hazır mısın? Hem öğreneceğiz, hem konuşacağız, hem de eğleneceğiz. Hadi, şimdi önce testi yap ve sonra beraber planımızı yapalım.'; }
 /* Gerçek Aiko sesi: backend (OpenAI TTS) → mp3; önbelleğe alınır, olmazsa tarayıcı sesi */
 let __greetAudioEl=null;
 function blobToDataURL(b){ return new Promise(function(res){ try{ const fr=new FileReader(); fr.onload=function(){res(fr.result);}; fr.onerror=function(){res(null);}; fr.readAsDataURL(b);}catch(e){res(null);} }); }
-var TTSVER='v3'; /* talimat/ses değişince eski önbelleği geçersiz kıl */
+var TTSVER='v4'; /* talimat/ses değişince eski önbelleği geçersiz kıl */
 function ttsCacheKey(t,v){ var s=(t||'')+'|'+(v||'')+'|'+TTSVER; let h=0; for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0; return 'kelimeApp.tts.'+h; }
 function getCachedTTS(t,v){ try{ return localStorage.getItem(ttsCacheKey(t,v)); }catch(e){ return null; } }
 async function fetchGreetTTS(text){ var voice=avatarVoice();
@@ -617,7 +652,13 @@ async function fetchGreetTTS(text){ var voice=avatarVoice();
   }catch(e){}
   return null;
 }
-function playAudioUrl(url){ try{ if(__greetAudioEl){try{__greetAudioEl.pause();}catch(e){}} __greetAudioEl=new Audio(url); const p=__greetAudioEl.play(); if(p&&p.then)p.then(function(){__greetSpoke=true;}).catch(function(){ speakGreet(); }); return true; }catch(e){ speakGreet(); return false; } }
+function playAudioUrl(url){ try{
+    if(!__greetAudioEl){ __greetAudioEl=new Audio(); try{__greetAudioEl.setAttribute('playsinline','');}catch(e){} }
+    var g=__greetAudioEl; try{ g.pause(); g.currentTime=0; }catch(e){}
+    try{ g.playbackRate=userSpeed(); g.preservesPitch=true; g.mozPreservesPitch=true; g.webkitPreservesPitch=true; }catch(e){}
+    try{ if(!applyAvatarLevel(g)){ g.volume=avatarVol(); } }catch(e){}
+    g.src=url; const p=g.play(); if(p&&p.then)p.then(function(){__greetSpoke=true;}).catch(function(){ speakGreet(); }); return true;
+  }catch(e){ speakGreet(); return false; } }
 function playGreet(){ const cached=getCachedTTS(__greetText,avatarVoice()); if(cached){ playAudioUrl(cached); return; }
   fetchGreetTTS(__greetText).then(function(url){ if(url) playAudioUrl(url); else speakGreet(); }); }
 function greetWelcome(has){ __greetText=greetText(has); const t=document.getElementById('wgTxt'); if(t)t.textContent=__greetText; __greetSpoke=false;
@@ -1239,7 +1280,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s293</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s296</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>

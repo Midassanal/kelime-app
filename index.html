@@ -953,15 +953,17 @@ function speakRec(){ const el=document.getElementById('sptr'); const b=document.
 /* Kaydı durdur ve ses dosyası (blob) hazır olana kadar BEKLE — "Bitir"e kayıt sürerken VEYA durdurduktan hemen sonra basılırsa değerlendirme kaçmasın. */
 function finishRecording(){ return new Promise(function(resolve){
   try{ if(mediaRec && mediaRec.state==='recording') stopSpeakRec(); }catch(e){}
-  if(T && T.speakBlob){ resolve(); return; }           /* dosya zaten hazır */
-  if(!__recPending || !__recPending.p){ resolve(); return; } /* hiç aktif kayıt yok */
-  var done=false; var fin=function(){ if(!done){ done=true; setTimeout(resolve,20); } };
-  var to=setTimeout(fin,4000);                          /* durdurma olayı hiç gelmezse 4 sn sonra devam */
-  __recPending.p.then(function(){ clearTimeout(to); fin(); });
+  if(T && T.speakBlob){ resolve(true); return; }           /* dosya zaten hazır */
+  if(!__recPending || !__recPending.p){ resolve(true); return; } /* hiç aktif kayıt yok */
+  var done=false;
+  var to=setTimeout(function(){ if(!done){ done=true; __recPending=null; resolve(false); } },4000); /* durdurma olayı hiç gelmezse: başarısız */
+  __recPending.p.then(function(){ if(!done){ done=true; clearTimeout(to); setTimeout(function(){resolve(true);},20); } });
 }); }
 async function finishSpeak(){ const btn=document.querySelector('.footer .primary');
   if(btn){ btn.disabled=true; btn.textContent='Kayıt tamamlanıyor…'; }
-  await finishRecording(); if(sprec){try{sprec.stop();}catch(e){}sprec=null;} if(btn){ btn.disabled=false; }
+  var recOk=await finishRecording(); if(sprec){try{sprec.stop();}catch(e){}sprec=null;} if(btn){ btn.disabled=false; btn.textContent='Bitir'; }
+  // Kayıt başladı ama dosya hiç hazır olmadı (tarayıcı durdurma olayı gelmedi) → kullanıcıya haber ver, sessizce geçme.
+  if(!recOk && !(T&&T.speakBlob)){ var sel=document.getElementById('sptr'); if(sel)sel.innerHTML='⚠️ Kayıt tamamlanamadı — mikrofona tekrar dokunup dene. (Yine olmazsa Bitir\'e tekrar bas, bu bölümü atlarız.)'; return; }
   // Kayıt varsa backend'e (Whisper) gönder → transkript + CEFR; seviyeye katılır.
   if(T.speakBlob && API_BASE && window.KelimeAPI && KelimeAPI.gradeSpeakingAudio){
     if(btn){ btn.disabled=true; btn.textContent='Konuşman değerlendiriliyor…'; }
@@ -1224,7 +1226,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s290</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s291</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>

@@ -1,0 +1,15 @@
+name: Parlo günlük bildirim tetikleyici
+# Render ücretsiz katmanı uykuya daldığından, bu saatlik iş hem servisi uyandırır
+# hem de /api/push/run'ı çağırır. Sunucu, yalnızca YEREL tercih saati gelen ve
+# o gün bildirim almamış kullanıcılara gönderir. Saatlik çalışması normaldir.
+on:
+  schedule:
+    - cron: '0 * * * *'   # her saat başı (UTC)
+  workflow_dispatch: {}     # elle de tetiklenebilir
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger push run
+        run: |
+          curl -s -X POST "https://kelime-backend-fgvw.onrender.com/api/push/run?key=${{ secrets.PARLO_PUSH_SECRET }}"             --max-time 60 -w "\nHTTP %{http_code}\n" || true

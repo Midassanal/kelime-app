@@ -306,6 +306,10 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
     chatTurn: (message,opts={})=> aiBlocked()?aiDeny():jfetch('/api/chat/turn',{method:'POST',body:JSON.stringify({message,level:opts.level||'A2',words:opts.words||[],history:opts.history||[],tts:opts.tts?1:0,topic:opts.topic||undefined})}),
     wordImage: (word,prompt)=> aiBlocked()?aiDeny():jfetch('/api/image',{method:'POST',body:JSON.stringify({word:word,prompt:prompt||undefined})}),
     async tts(text,voice,instructions){ if(aiBlocked()) return {error:'ai_consent_required',blocked:true}; if(!BASE) return {offline:true}; try{ const h={'Content-Type':'application/json'}; if(TOKEN)h.Authorization='Bearer '+TOKEN; const r=await fetch(BASE+'/api/tts',{method:'POST',headers:h,body:JSON.stringify({text,voiceId:voice||undefined,instructions:instructions||undefined})}); const ct=r.headers.get('content-type')||''; if(ct.includes('audio')) return {audio:await r.blob()}; return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
+    pushSubscribe: (subscription,hour,tzOffset)=>jfetch('/api/push/subscribe',{method:'POST',body:JSON.stringify({subscription,hour,tzOffset})}),
+    pushPrefs: (prefs)=>jfetch('/api/push/prefs',{method:'POST',body:JSON.stringify(prefs||{})}),
+    pushUnsubscribe: (endpoint)=>jfetch('/api/push/unsubscribe',{method:'POST',body:JSON.stringify(endpoint?{endpoint}:{})}),
+    pushTest: ()=>jfetch('/api/push/test',{method:'POST',body:'{}'}),
     payStart: (email,name)=>jfetch('/api/pay/start',{method:'POST',body:JSON.stringify({email,name})}),
     payStatus: (email)=>jfetch('/api/pay/status?email='+encodeURIComponent(email||'')),
     payCancel: (email)=>jfetch('/api/pay/cancel',{method:'POST',body:JSON.stringify({email})}),
@@ -1211,6 +1215,7 @@ function scrDashboard(){ stopAll(); try{ clearUpload(); }catch(e){} /* ana ekran
         <button id="aiTgl" class="${aiAllowed()?'ghost':'primary'}" style="width:100%" onclick="toggleAiConsent()">${aiAllowed()?'Yapay zekâ izni: Açık · kapat':'Yapay zekâ özelliklerine izin ver'}</button>
         <div id="aiTglNote" style="font-size:11.5px;color:var(--muted);margin-top:8px"></div>
       </div>
+      ${notifCardHtml()}
       <div class="devrow"><button onclick="devDay()">🔧 +1 gün (test)</button><button onclick="devReset()">🔧 üyeliği sıfırla</button></div>
     </div>
   </div></div>`;
@@ -1218,6 +1223,56 @@ function scrDashboard(){ stopAll(); try{ clearUpload(); }catch(e){} /* ana ekran
 function continueTopic(){ const t=TOPICS.find(x=>x.id===profile.lastTopicId)||TOPICS[0]; gateStart(()=>startTopic(t)); }
 function devDay(){ profile.devOffset=(profile.devOffset||0)+1; saveProfile(); scrDashboard(); }
 function devReset(){ profile.subscribed=false; profile.devOffset=0; saveProfile(); scrDashboard(); }
+/* ===== Günlük bildirim (Web Push + VAPID) ===== */
+var VAPID_PUBLIC='BB8baAW3nzdX2nwue7s-9wbR57EtSnpChN57Zm9iNOvjeNw0p8LA-zv-kWI2hs2ixvNRY24XUysDWBuO5yPpEXg';
+function notifSupported(){ return ('serviceWorker' in navigator) && ('PushManager' in window) && (typeof Notification!=='undefined'); }
+function notifState(){ try{ return JSON.parse(localStorage.getItem('parlo_notif')||'{}')||{}; }catch(e){ return {}; } }
+function notifSave(s){ try{ localStorage.setItem('parlo_notif', JSON.stringify(s||{})); }catch(e){} }
+function urlB64ToU8(b64){ var pad='='.repeat((4-b64.length%4)%4); var s=(b64+pad).replace(/-/g,'+').replace(/_/g,'/'); var raw=atob(s); var out=new Uint8Array(raw.length); for(var i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i); return out; }
+function notifNote(t){ var n=document.getElementById('notifNote'); if(n)n.textContent=t||''; }
+function notifCardHtml(){
+  var st=notifState(); var on=!!st.enabled; var hour=(st.hour!=null?st.hour:20);
+  if(!notifSupported()){
+    return '<div class="dlearn" style="margin-top:12px"><h4>🔔 Günlük hatırlatma</h4><p style="color:var(--muted);font-size:12.5px;margin:0;line-height:1.5">Bu cihaz/tarayıcı bildirimi desteklemiyor. iPhone\'da: Safari\'de paylaş düğmesi → <b>Ana Ekrana Ekle</b>, sonra uygulamayı ana ekrandaki simgeden açınca bildirim açılabilir.</p></div>';
+  }
+  var opts=''; for(var h=0;h<24;h++){ opts+='<option value="'+h+'"'+(h===hour?' selected':'')+'>'+(h<10?'0'+h:h)+':00</option>'; }
+  return '<div class="dlearn" style="margin-top:12px"><h4>🔔 Günlük hatırlatma</h4>'
+    +'<p style="color:var(--muted);font-size:12.5px;margin:0 0 10px;line-height:1.5">Her gün seçtiğin saatte kısa, motive edici bir hatırlatma gönderelim. İstediğin zaman kapatabilirsin.</p>'
+    +'<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><span style="font-size:13px;color:var(--muted)">Saat</span><select id="notifHour" onchange="notifHourChange(this.value)" style="flex:1;padding:8px;border-radius:10px;border:1px solid #e9ddd4;background:#fff;font-size:14px">'+opts+'</select></div>'
+    +'<button id="notifTgl" class="'+(on?'ghost':'primary')+'" style="width:100%" onclick="notifToggle()">'+(on?'Günlük hatırlatma: Açık · kapat':'Günlük hatırlatmayı aç')+'</button>'
+    +(on?'<button class="opt" style="width:100%;margin-top:8px" onclick="notifSendTest()">Deneme bildirimi gönder</button>':'')
+    +'<div id="notifNote" style="font-size:11.5px;color:var(--muted);margin-top:8px"></div></div>';
+}
+function notifHourVal(){ var s=document.getElementById('notifHour'); return s?parseInt(s.value,10):(notifState().hour!=null?notifState().hour:20); }
+async function notifToggle(){ var st=notifState(); if(st.enabled) return notifDisable(); return notifEnable(notifHourVal()); }
+async function notifEnable(hour){
+  var btn=document.getElementById('notifTgl'); if(btn){ btn.disabled=true; btn.textContent='Açılıyor…'; }
+  try{
+    if(!notifSupported()){ notifNote('Bu cihaz bildirimi desteklemiyor.'); return; }
+    var perm=await Notification.requestPermission();
+    if(perm!=='granted'){ notifNote('Bildirim izni verilmedi. Tarayıcı ayarlarından izin verip tekrar dene.'); scrDashboard(); return; }
+    var reg=await navigator.serviceWorker.ready;
+    var sub=await reg.pushManager.getSubscription();
+    if(!sub){ sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:urlB64ToU8(VAPID_PUBLIC)}); }
+    var tz=new Date().getTimezoneOffset();
+    var r=await KelimeAPI.pushSubscribe(sub.toJSON(), hour, tz);
+    if(r&&r.ok){ notifSave({enabled:true,hour:hour,endpoint:sub.endpoint}); scrDashboard(); setTimeout(function(){notifNote('✓ Açıldı. Her gün '+((hour<10?'0'+hour:hour))+':00 civarı hatırlatılacak.');},30); }
+    else if(r&&r.error==='push_disabled'){ notifNote('Sunucuda bildirim henüz etkin değil (VAPID anahtarları ayarlanmalı).'); scrDashboard(); }
+    else { notifNote('Kaydedilemedi — bağlantını kontrol edip tekrar dene.'); scrDashboard(); }
+  }catch(e){ notifNote('Açılamadı: '+(e&&e.message?e.message:'bilinmeyen hata')); if(btn){btn.disabled=false;} }
+}
+async function notifDisable(){
+  var btn=document.getElementById('notifTgl'); if(btn){ btn.disabled=true; btn.textContent='Kapatılıyor…'; }
+  try{
+    var reg=await navigator.serviceWorker.ready; var sub=await reg.pushManager.getSubscription(); var ep=sub?sub.endpoint:null;
+    if(sub){ try{ await sub.unsubscribe(); }catch(e){} }
+    try{ await KelimeAPI.pushUnsubscribe(ep); }catch(e){}
+    notifSave({enabled:false,hour:(notifState().hour!=null?notifState().hour:20)}); scrDashboard(); setTimeout(function(){notifNote('Günlük hatırlatma kapatıldı.');},30);
+  }catch(e){ notifNote('Kapatılamadı: '+(e&&e.message?e.message:'hata')); if(btn){btn.disabled=false;} }
+}
+async function notifHourChange(v){ var h=parseInt(v,10); if(isNaN(h))return; var st=notifState(); st.hour=h; notifSave(st);
+  if(st.enabled){ try{ await KelimeAPI.pushPrefs({hour:h, tzOffset:new Date().getTimezoneOffset()}); notifNote('✓ Saat güncellendi: '+((h<10?'0'+h:h))+':00'); }catch(e){ notifNote('Saat kaydedilemedi.'); } } }
+async function notifSendTest(){ notifNote('Deneme gönderiliyor…'); try{ var r=await KelimeAPI.pushTest(); if(r&&r.ok&&r.sent>0) notifNote('✓ Deneme gönderildi ('+r.sent+' cihaz). Birkaç saniyede gelmeli.'); else if(r&&r.error==='push_disabled') notifNote('Sunucuda bildirim etkin değil.'); else notifNote('Gönderilemedi — bildirim açık mı?'); }catch(e){ notifNote('Gönderilemedi.'); } }
 /* ===== Gelişim ekranı (son 30 gün) ===== */
 function scrProgress(){ stopAll();
   var days=lastNDays(30);
@@ -1448,7 +1503,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s309</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s310</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>
@@ -1902,20 +1957,38 @@ function scrChat(opts){ stopAll(); primeTTS(); opts=opts||{}; const photo=opts.p
   </div>`;
   document.getElementById('csend').onclick=function(){ primeTTS(); const v=document.getElementById('ctxt').value; document.getElementById('ctxt').value=''; if(v.trim())chatUser(v); };
   document.getElementById('ctxt').addEventListener('keydown',function(e){ if(e.key==='Enter'){e.preventDefault();document.getElementById('csend').click();} });
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition; const mic=document.getElementById('cmic');
+  const mic=document.getElementById('cmic');
   const setStatus=function(t){ const s=document.getElementById('cstatus'); if(s)s.textContent=t; };
-  /* Yapay zekâ izni kapalıyken tarayıcı konuşma tanıma BAŞLATILMAZ (ses sağlayıcıya gidebilir): mikrofonu gizle, yazarak devam. */
-  if(SR && aiAllowed()){
+  /* GİZLİLİK: Sohbet sesi, tarayıcı konuşma tanıma (sesi ör. Google'a gönderebilen webkitSpeechRecognition)
+     YERİNE uygulamanın geri kalanıyla AYNI sunucu yolunu (OpenAI Whisper) kullanır → ses YALNIZCA OpenAI'ye
+     gider, tek açık rıza kapsamında. İzin yoksa mikrofon gizlenir, yazarak devam edilir. */
+  const cmicOk = navigator.mediaDevices && navigator.mediaDevices.getUserMedia && typeof MediaRecorder!=='undefined';
+  if(cmicOk && aiAllowed()){
+    var cMR=null, cStream=null, cChunks=[]; const CMIN=1200; /* backend ile aynı eşik: altı boş/çok kısa sayılır */
+    const cReset=function(){ chatListening=false; mic.classList.remove('on'); };
     mic.onclick=function(){
-      if(chatListening){ try{chatRec&&chatRec.stop();}catch(_){}; return; }
+      if(chatListening){ try{ cMR && cMR.state==='recording' && cMR.stop(); }catch(_){}; return; }
       try{ speechSynthesis.cancel(); }catch(_){} try{ stopAll(); }catch(_){}
       var box=document.getElementById('ctxt'); if(box)box.value='';
-      var rec; try{ rec=new SR(); }catch(e){ setStatus('ses başlatılamadı — yazarak dene'); return; }
-      chatRec=rec; rec.lang='en-US'; rec.interimResults=true; rec.continuous=false; var micDenied=false;
-      rec.onresult=function(e){ var interim='',final=''; for(var i=0;i<e.results.length;i++){ var t=e.results[i][0].transcript; if(e.results[i].isFinal)final+=t; else interim+=t; } var b=document.getElementById('ctxt'); if(b)b.value=(final||interim); if(final && final.trim()){ try{rec.stop();}catch(_){}} };
-      rec.onerror=function(ev){ chatListening=false; mic.classList.remove('on'); if(ev&&(ev.error==='not-allowed'||ev.error==='service-not-allowed')){ micDenied=true; setStatus('🎤 mikrofon izni yok — yazarak dene'); } else { setStatus('seni duyamadım — 🎤 tekrar dokun ya da yaz ✍️'); } };
-      rec.onend=function(){ chatListening=false; mic.classList.remove('on'); var b=document.getElementById('ctxt'); var v=b?b.value.trim():''; if(v){ b.value=''; setStatus('çevrimiçi · konuşma partnerin'); chatUser(v); } else if(!micDenied){ setStatus('seni duyamadım — 🎤 tekrar dokun ya da yaz ✍️'); } /* izin reddi mesajını ezme */ };
-      try{ rec.start(); chatListening=true; mic.classList.add('on'); setStatus('🎤 dinliyor… konuş'); }catch(e){ chatListening=false; setStatus('🎤 tekrar dokun'); }
+      navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
+        cStream=stream; cChunks=[];
+        try{ cMR=new MediaRecorder(stream); }catch(e){ try{ cMR=new MediaRecorder(stream,{mimeType:'audio/webm'}); }catch(e2){ setStatus('ses başlatılamadı — yazarak dene'); cReset(); return; } }
+        cMR.ondataavailable=function(ev){ if(ev.data&&ev.data.size>0)cChunks.push(ev.data); };
+        cMR.onstop=function(){
+          if(cStream){ try{ cStream.getTracks().forEach(function(t){t.stop();}); }catch(_){} cStream=null; }
+          cReset();
+          var blob=null; try{ blob=new Blob(cChunks,{type:(cMR&&cMR.mimeType)||'audio/webm'}); }catch(e){}
+          if(!blob || blob.size<CMIN){ setStatus('seni duyamadım — 🎤 tekrar dokun ya da yaz ✍️'); return; }
+          setStatus('🎤 çözümleniyor…');
+          KelimeAPI.gradeSpeakingAudio(blob,(profile&&profile.level)||'A2').then(function(r){
+            if(r&&r.blocked){ setStatus('yapay zekâ izni gerekli — yazarak devam et'); return; }
+            var txt=(r&&r.transcript)?String(r.transcript).trim():'';
+            if(txt){ setStatus('çevrimiçi · konuşma partnerin'); chatUser(txt); }
+            else setStatus('seni net duyamadım — 🎤 tekrar dokun ya da yaz ✍️');
+          }).catch(function(){ setStatus('bağlanamadım — yazarak dene'); });
+        };
+        try{ cMR.start(); chatListening=true; mic.classList.add('on'); setStatus('🎤 dinliyor… bitince 🎤 tekrar dokun'); }catch(e){ cReset(); setStatus('🎤 tekrar dokun'); }
+      }).catch(function(){ cReset(); setStatus('🎤 mikrofon izni yok — yazarak dene'); });
     };
   } else { mic.style.display='none'; }
   // açılış

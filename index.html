@@ -591,7 +591,13 @@ function recordProgress(){ if(!profile||!currentTopic)return; const t=currentTop
 /* ===== Günlük yeni kelime sınırı (günde en çok 15 yeni) ===== */
 const DAILY_NEW_CAP=10;
 function newTodayCount(){ if(!profile)return 0; var n=profile.newToday; if(!n||n.d!==todayStr())return 0; return n.count||0; }
-function newTodayAdd(k){ if(!profile||!k)return; var t=todayStr(); if(!profile.newToday||profile.newToday.d!==t)profile.newToday={d:t,count:0}; profile.newToday.count+=k; }
+function newTodayAdd(k){ if(!profile||!k)return; var t=todayStr(); if(!profile.newToday||profile.newToday.d!==t)profile.newToday={d:t,count:0}; profile.newToday.count+=k; logDaily('yeni',k); }
+/* Günlük gelişim kaydı: profile.history[GG] = { yeni, yazma, konusma } — aylık çizelge bundan beslenir. */
+function logDaily(kind,n){ if(!profile)return; n=Number(n)||0; if(n<=0)return; try{ profile.history=profile.history||{}; var k=todayStr(); var d=profile.history[k]||{}; d[kind]=(d[kind]||0)+n; profile.history[k]=d; saveProfile(); }catch(e){} }
+/* Son N günün 'YYYY-MM-DD' anahtarları (bugün dahil, eskiden yeniye). */
+function lastNDays(n){ var out=[]; var base=new Date(); for(var i=n-1;i>=0;i--){ var d=new Date(base.getFullYear(),base.getMonth(),base.getDate()-i); out.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')); } return out; }
+function histSum(kind,days){ if(!profile||!profile.history)return 0; var keys=days?lastNDays(days):Object.keys(profile.history); var s=0; keys.forEach(function(k){ var d=profile.history[k]; if(d)s+=(d[kind]||0); }); return s; }
+function streakDays(){ if(!profile||!Array.isArray(profile.daysActive))return 0; var set={}; profile.daysActive.forEach(function(x){ set[x]=1; }); var base=new Date(); var n=0; for(var i=0;i<400;i++){ var d=new Date(base.getFullYear(),base.getMonth(),base.getDate()-i); var k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); if(set[k])n++; else if(i>0)break; else { /* bugün henüz aktif değilse dünden saymaya devam */ } } return n; }
 function newCapReached(){ return newTodayCount()>=DAILY_NEW_CAP; }
 
 /* ================= ARALIKLI TEKRAR (Leitner) ================= */
@@ -1003,7 +1009,7 @@ function scrWriting(){ stopAll();
   T.writeShown=false;
   const ta=document.getElementById('wrt'); if(ta){ ta.oninput=function(){ const n=(ta.value.trim().match(/\S+/g)||[]).length; const el=document.getElementById('wc'); if(el)el.textContent=n+' kelime'; }; }
 }
-async function submitWriting(){ const ta=document.getElementById('wrt'); T.write=ta?ta.value.trim():'';
+async function submitWriting(){ const ta=document.getElementById('wrt'); T.write=ta?ta.value.trim():''; if(T.write&&T.write.length>1)logDaily('yazma',1);
   // ilk basış: cümleleri revize edip göster; ikinci basış: konuşmaya geç
   if(T.writeShown){ return scrSpeaking(); }
   if(T.write.length<2){ return scrSpeaking(); }
@@ -1091,7 +1097,7 @@ async function finishSpeak(){ const btn=document.querySelector('.footer .primary
   var recOk=await finishRecording(); if(sprec){try{sprec.stop();}catch(e){}sprec=null;} if(btn){ btn.disabled=false; btn.textContent='Bitir'; }
   var sel=document.getElementById('sptr');
   var MIN_AUDIO=1200; /* backend ile aynı eşik: altında kayıt "boş/çok kısa" sayılır */
-  var hasAudio=!!(T && T.speakBlob && T.speakBlob.size>=MIN_AUDIO);
+  var hasAudio=!!(T && T.speakBlob && T.speakBlob.size>=MIN_AUDIO); if(hasAudio)logDaily('konusma',1);
   // Kayıt yeterliyse backend'e (Whisper) gönder → transkript + CEFR; seviyeye katılır.
   var apiNoSpeech=false;
   if(hasAudio && API_BASE && window.KelimeAPI && KelimeAPI.gradeSpeakingAudio){
@@ -1197,6 +1203,7 @@ function scrDashboard(){ stopAll(); try{ PHOTO=null; IMPORT_IMG=null; }catch(e){
       <div class="dlearn"><h4>Bugün çalışalım</h4>
         ${last?`<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Kaldığın yer: ${last.emoji} ${last.name}</div>`:''}
         <button class="primary" style="width:100%" onclick="scrToday()">Bugün ne çalışalım? →</button>
+        <button class="opt" style="width:100%;margin-top:10px" onclick="scrProgress()">📈 Gelişimim</button>
       </div>
       <div class="dlearn" style="margin-top:12px"><h4>🔒 Yapay zekâ izni</h4>
         <p style="color:var(--muted);font-size:12.5px;margin:0 0 10px;line-height:1.5">Konuşma/yazma değerlendirme, sohbet, sesli anlatım ve fotoğraf analizi için ses, metin ve fotoğrafların değerlendirme amacıyla yurt dışındaki hizmet sağlayıcıya (OpenAI) gönderilir. İzin vermezsen bu özellikler kapalı kalır; kelime, favori ve tekrar çalışmaya devam eder. <a href="gizlilik.html" target="_blank" style="color:inherit">Ayrıntı</a></p>
@@ -1210,6 +1217,28 @@ function scrDashboard(){ stopAll(); try{ PHOTO=null; IMPORT_IMG=null; }catch(e){
 function continueTopic(){ const t=TOPICS.find(x=>x.id===profile.lastTopicId)||TOPICS[0]; gateStart(()=>startTopic(t)); }
 function devDay(){ profile.devOffset=(profile.devOffset||0)+1; saveProfile(); scrDashboard(); }
 function devReset(){ profile.subscribed=false; profile.devOffset=0; saveProfile(); scrDashboard(); }
+/* ===== Gelişim ekranı (son 30 gün) ===== */
+function scrProgress(){ stopAll();
+  var days=lastNDays(30);
+  var vals=days.map(function(k){ var d=profile&&profile.history&&profile.history[k]; return d?(d.yeni||0):0; });
+  var max=Math.max(1,Math.max.apply(null,vals));
+  var total=totalLearned(), m30=histSum('yeni',30), wr=histSum('yazma',30), sp=histSum('konusma',30);
+  var act=(profile&&Array.isArray(profile.daysActive))?profile.daysActive.length:0, st=streakDays();
+  function tile(n,l){ return '<div class="stat" style="flex:1;min-width:0"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>'; }
+  function xl(k){ return k.slice(8)+'.'+k.slice(5,7); }
+  var bars=days.map(function(k,i){ var v=vals[i]; var h=Math.round((v/max)*100); return '<div title="'+xl(k)+': '+v+' kelime" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%"><div style="height:'+h+'%;min-height:'+(v>0?3:0)+'px;background:linear-gradient(180deg,#ff9a76,#ff7e9d);border-radius:3px 3px 0 0"></div></div>'; }).join('');
+  app.innerHTML='<div class="screen">'
+   +'<div class="hdr"><button class="back" onclick="scrDashboard()">‹ Panel</button><span class="phase">Gelişimim</span></div>'
+   +'<div class="content" style="padding-top:8px">'
+   +'<div class="welcome" style="margin-bottom:8px"><h1 style="font-size:22px">Gelişimin 📈</h1><p>Son 30 günün özeti. Çalıştıkça çizelge dolar.</p></div>'
+   +'<div class="statgrid" style="display:flex;gap:8px;margin-bottom:10px">'+tile(total,'toplam kelime')+tile(m30,'son 30g kelime')+tile(st,'gün seri')+'</div>'
+   +'<div class="statgrid" style="display:flex;gap:8px;margin-bottom:16px">'+tile(act,'aktif gün')+tile(wr,'yazma · 30g')+tile(sp,'konuşma · 30g')+'</div>'
+   +'<div class="dlearn"><h4>Son 30 gün · günlük yeni kelime</h4>'
+   +'<div style="display:flex;align-items:flex-end;gap:2px;height:120px;margin:8px 0 4px">'+bars+'</div>'
+   +'<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted)"><span>'+xl(days[0])+'</span><span>'+xl(days[15])+'</span><span>bugün</span></div>'
+   +'<div style="font-size:11px;color:var(--muted);margin-top:8px">En yüksek gün: '+max+' kelime. Geçmiş günler, bu özellik eklendikten sonra dolmaya başlar.</div>'
+   +'</div></div></div>';
+}
 
 /* ---- ÜYELİK ---- */
 function scrPaywall(){ stopAll();
@@ -1373,7 +1402,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s305</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s306</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>
@@ -1887,7 +1916,7 @@ function chatNext(){ chatIdx++;
   const w=chatWords[chatIdx];
   ctyping(true); setTimeout(function(){ ctyping(false); cbot(cpick(["Can you make a sentence with *"+w+"*?","Try using *"+w+"* in a sentence.","How would you use *"+w+"* today?"])); }, 700);
 }
-function chatUser(text){ text=(text||'').trim(); if(!text)return;
+function chatUser(text){ text=(text||'').trim(); if(!text)return; logDaily('konusma',1);
   if(chatEnded){ return; }              /* "Bitir" sonrası giriş kapalı */
   if(chatBusy){ return; }               /* önceki tur bitmeden yeni gönderim yok (yanıtlar sıralı kalsın) */
   chatBusy=true; cme(text);
@@ -2002,7 +2031,7 @@ function scrPhotoWrite(){ stopAll();
   </div>`;
   const ta=document.getElementById('pwrt'); if(ta){ ta.oninput=function(){ const n=(ta.value.trim().match(/\S+/g)||[]).length; const el=document.getElementById('pwc'); if(el)el.textContent=n+' kelime'; }; }
 }
-async function submitPhotoWrite(){ const ta=document.getElementById('pwrt'); const text=ta?ta.value.trim():''; if(text.length<2)return;
+async function submitPhotoWrite(){ const ta=document.getElementById('pwrt'); const text=ta?ta.value.trim():''; if(text.length<2)return; logDaily('yazma',1);
   const fbEl=document.getElementById('pwfb'); const btn=document.querySelector('.footer .primary');
   const local=(typeof correctText==='function')?correctText(text):{text:text,changes:[]};
   let api=null;
@@ -2222,7 +2251,7 @@ function wwUpdate(text){ const low=' '+(text||'').toLowerCase()+' '; let used=0;
     document.querySelectorAll('.cwchip').forEach(function(ch){ if(ch.getAttribute('data-w')===d.w) ch.classList.toggle('on',on); }); });
   const n=(text.trim().match(/\S+/g)||[]).length; const el=document.getElementById('wwc'); if(el)el.textContent=n+' kelime · '+used+'/'+WW.length+' hedef';
 }
-async function submitWriteWords(){ const ta=document.getElementById('wwt'); const text=ta?ta.value.trim():''; if(text.length<2)return;
+async function submitWriteWords(){ const ta=document.getElementById('wwt'); const text=ta?ta.value.trim():''; if(text.length<2)return; logDaily('yazma',1);
   const local=(typeof correctText==='function')?correctText(text):{text:text,changes:[]}; let api=null;
   const btn=document.querySelector('.footer .primary');
   if(window.KelimeAPI && API_BASE){ if(btn){btn.disabled=true;btn.textContent='Değerlendiriliyor…';}
@@ -2248,7 +2277,7 @@ function attachSwipe(card,onLeft,onRight){
 }
 
 Object.assign(window,{scrTopics,pickTopic,startSelect,selDecide,toggleHide,toggleSave,cardGo,setMode,toggleNormal,toggleElif,openSheet,closeSheet,sheetSave,say,scrProduce,p1skip,p1next,bankTap,produceS1,produceS2,produceS3,scrDone,
-  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar,cancelSub,chatPlayPause,avatarTap});
+  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,scrProgress,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar,cancelSub,chatPlayPause,avatarTap});
 boot();
 </script>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>

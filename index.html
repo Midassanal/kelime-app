@@ -1334,10 +1334,10 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s298</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s299</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
-    <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
+    <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>
     <div class="actions"><button class="nav" id="cprev" onclick="cardGo(-1)">‹</button><button class="primary" id="cnext" onclick="cardGo(1)" style="flex:1">Sonraki →</button></div>
     <div class="foothint" id="chint"></div>
   </div>`;
@@ -1432,6 +1432,12 @@ function mount3D(container, url){ if(!container||!window.THREE||!window.GLTFLoad
     return true;
   }catch(e){ return false; }
 }
+/* Kartlarda otomatik seslendirme: her karta geçince kelime + örnek cümle, SEÇİLİ AVATARIN sesiyle okunur.
+   Kullanıcı 'Oto-ses' düğmesiyle kapatabilir (tercih cihazda saklanır). */
+function autoSpeakOn(){ try{ return localStorage.getItem('parlo_autospeak')!=='0'; }catch(e){ return true; } }
+function updateAutoSpeakBtn(){ var b=document.getElementById('asMute'); if(b) b.textContent=autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'; }
+function sayCard(d){ if(!d)return; var t=String(d.w||''); if(d.ex) t+='. '+String(d.ex); say(t,false); }
+function toggleAutoSpeak(){ try{ localStorage.setItem('parlo_autospeak', autoSpeakOn()?'0':'1'); }catch(e){} updateAutoSpeakBtn(); if(autoSpeakOn()){ sayCard(roster[cardIdx]); } else { stopAll(); } }
 function cardRender(){
   const stage=document.getElementById('stage'); if(!stage)return; dispose3D(); stage.innerHTML='';
   const d=roster[cardIdx], dec=decile(d.rank); let segs=''; for(let s=1;s<=10;s++)segs+=`<span class="seg ${s<=dec?'on':''}"></span>`;
@@ -1450,7 +1456,9 @@ function cardRender(){
   const cp=document.getElementById('cprev'); if(cp)cp.disabled=cardIdx===0;
   const cn=document.getElementById('cnext'); if(cn)cn.textContent=cardIdx===roster.length-1?'Bitir ✓':'Sonraki →';
   const ch=document.getElementById('chint'); if(ch)ch.textContent=`${cardIdx+1} / ${roster.length}`;
-  cardDots();
+  cardDots(); updateAutoSpeakBtn();
+  /* Otomatik seslendirme: bu karta ait kelime+örnek, avatarın sesiyle (kısa gecikme → render'la çakışmasın). */
+  if(autoSpeakOn()){ var _w=d.w; setTimeout(function(){ if(roster[cardIdx] && roster[cardIdx].w===_w) sayCard(roster[cardIdx]); }, 300); }
 }
 function toggleHide(){ hideMode=!hideMode; document.getElementById('tgl').textContent=hideMode?'Anlamı göster':'Anlamı gizle · kendini test et'; cardRender(); }
 function toggleSave(w){ if(savedWords.has(w))savedWords.delete(w); else savedWords.add(w); touchSavedMeta(w); persistSaved(); cardRender(); }

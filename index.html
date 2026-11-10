@@ -269,6 +269,12 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
   let BASE = '', TOKEN = null;
   function setBase(url){ BASE=(url||'').replace(/\/$/,''); }
   function setToken(t){ TOKEN=t||null; }
+  /* Yapay zekâ izni kapısı: izin yoksa (ve zorlama açıksa) OpenAI uçlarına çağrı GÖNDERİLMEZ.
+     İzin, sunucudan okunan profilden gelir; aşağıdaki setAi ile güncellenir. */
+  let AIOK=false, AIENF=false;
+  function setAi(o){ if(o){ if('allowed' in o) AIOK=!!o.allowed; if('enforce' in o) AIENF=!!o.enforce; } }
+  function aiBlocked(){ return AIENF && !AIOK; }
+  const aiDeny = ()=>Promise.resolve({ error:'ai_consent_required', blocked:true });
   async function jfetch(path, opts = {}) {
     if (!BASE) return { offline: true };
     const isForm = opts.body instanceof FormData;
@@ -283,7 +289,7 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
     } catch (e) { return { offline:true, error:String(e.message) }; }
   }
   const API = {
-    setBase, setToken, getBase: ()=>BASE,
+    setBase, setToken, setAi, getBase: ()=>BASE,
     health: ()=>jfetch('/api/health'),
     async anon(){ const r=await jfetch('/api/auth/anon',{method:'POST',body:'{}'}); if(r.token)setToken(r.token); return r; },
     async register(name, age, extra={}){ const r=await jfetch('/api/auth/register',{method:'POST',body:JSON.stringify({name,age,...extra})}); if(r.token)setToken(r.token); return r; },
@@ -291,15 +297,15 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
     async login(email,password){ const r=await jfetch('/api/auth/login',{method:'POST',body:JSON.stringify({email,password})}); if(r.token)setToken(r.token); return r; },
     getProfile: ()=>jfetch('/api/profile'),
     saveProfile: (profile)=>jfetch('/api/profile',{method:'PUT',body:JSON.stringify({profile})}),
-    gradeWriting: (text,level)=>jfetch('/api/writing/grade',{method:'POST',body:JSON.stringify({text,level})}),
-    extractVocab: (payload)=>jfetch('/api/vocab/extract',{method:'POST',body:JSON.stringify(payload||{})}),
-    enrichVocab: (words,level,context)=>jfetch('/api/vocab/enrich',{method:'POST',body:JSON.stringify({words,level,context:context||undefined})}),
-    gradeSpeaking: (transcript,level)=>jfetch('/api/speaking/grade',{method:'POST',body:JSON.stringify({transcript,level})}),
-    async gradeSpeakingAudio(blob,level){ if(!BASE) return {offline:true}; try{ const fd=new FormData(); var ext=(blob&&blob.type&&blob.type.indexOf('mp4')>=0)?'mp4':(blob&&blob.type&&blob.type.indexOf('mpeg')>=0?'mp3':'webm'); fd.append('audio',blob,'speech.'+ext); fd.append('level',level||'A2'); const h={}; if(TOKEN)h.Authorization='Bearer '+TOKEN; const r=await fetch(BASE+'/api/speaking/grade',{method:'POST',headers:h,body:fd}); return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
-    generateStory: (words,level,tts=false,topic='')=>jfetch('/api/story/generate',{method:'POST',body:JSON.stringify({words,level,tts,topic:topic||undefined})}),
-    chatTurn: (message,opts={})=>jfetch('/api/chat/turn',{method:'POST',body:JSON.stringify({message,level:opts.level||'A2',words:opts.words||[],history:opts.history||[],tts:opts.tts?1:0,topic:opts.topic||undefined})}),
-    wordImage: (word,prompt)=>jfetch('/api/image',{method:'POST',body:JSON.stringify({word:word,prompt:prompt||undefined})}),
-    async tts(text,voice,instructions){ if(!BASE) return {offline:true}; try{ const h={'Content-Type':'application/json'}; if(TOKEN)h.Authorization='Bearer '+TOKEN; const r=await fetch(BASE+'/api/tts',{method:'POST',headers:h,body:JSON.stringify({text,voiceId:voice||undefined,instructions:instructions||undefined})}); const ct=r.headers.get('content-type')||''; if(ct.includes('audio')) return {audio:await r.blob()}; return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
+    gradeWriting: (text,level)=> aiBlocked()?aiDeny():jfetch('/api/writing/grade',{method:'POST',body:JSON.stringify({text,level})}),
+    extractVocab: (payload)=> aiBlocked()?aiDeny():jfetch('/api/vocab/extract',{method:'POST',body:JSON.stringify(payload||{})}),
+    enrichVocab: (words,level,context)=> aiBlocked()?aiDeny():jfetch('/api/vocab/enrich',{method:'POST',body:JSON.stringify({words,level,context:context||undefined})}),
+    gradeSpeaking: (transcript,level)=> aiBlocked()?aiDeny():jfetch('/api/speaking/grade',{method:'POST',body:JSON.stringify({transcript,level})}),
+    async gradeSpeakingAudio(blob,level){ if(aiBlocked()) return {error:'ai_consent_required',blocked:true}; if(!BASE) return {offline:true}; try{ const fd=new FormData(); var ext=(blob&&blob.type&&blob.type.indexOf('mp4')>=0)?'mp4':(blob&&blob.type&&blob.type.indexOf('mpeg')>=0?'mp3':'webm'); fd.append('audio',blob,'speech.'+ext); fd.append('level',level||'A2'); const h={}; if(TOKEN)h.Authorization='Bearer '+TOKEN; const r=await fetch(BASE+'/api/speaking/grade',{method:'POST',headers:h,body:fd}); return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
+    generateStory: (words,level,tts=false,topic='')=> aiBlocked()?aiDeny():jfetch('/api/story/generate',{method:'POST',body:JSON.stringify({words,level,tts,topic:topic||undefined})}),
+    chatTurn: (message,opts={})=> aiBlocked()?aiDeny():jfetch('/api/chat/turn',{method:'POST',body:JSON.stringify({message,level:opts.level||'A2',words:opts.words||[],history:opts.history||[],tts:opts.tts?1:0,topic:opts.topic||undefined})}),
+    wordImage: (word,prompt)=> aiBlocked()?aiDeny():jfetch('/api/image',{method:'POST',body:JSON.stringify({word:word,prompt:prompt||undefined})}),
+    async tts(text,voice,instructions){ if(aiBlocked()) return {error:'ai_consent_required',blocked:true}; if(!BASE) return {offline:true}; try{ const h={'Content-Type':'application/json'}; if(TOKEN)h.Authorization='Bearer '+TOKEN; const r=await fetch(BASE+'/api/tts',{method:'POST',headers:h,body:JSON.stringify({text,voiceId:voice||undefined,instructions:instructions||undefined})}); const ct=r.headers.get('content-type')||''; if(ct.includes('audio')) return {audio:await r.blob()}; return await r.json(); }catch(e){ return {offline:true,error:String(e.message)}; } },
     payStart: (email,name)=>jfetch('/api/pay/start',{method:'POST',body:JSON.stringify({email,name})}),
     payStatus: (email)=>jfetch('/api/pay/status?email='+encodeURIComponent(email||'')),
     payCancel: (email)=>jfetch('/api/pay/cancel',{method:'POST',body:JSON.stringify({email})}),
@@ -468,7 +474,9 @@ TOPICS.forEach(function(t){ if(VOCAB[t.id]) t.words=VOCAB[t.id]; });
 let roster=[]; const savedWords=new Set();
 const app=document.getElementById('app'); const elifAudio=document.getElementById('elifAudio');
 let VOICE=null;
-function pickVoice(){const vs=(speechSynthesis.getVoices()||[]).filter(v=>/en[-_]/i.test(v.lang));const p=[/google us english/i,/natural/i,/aria/i,/samantha/i,/ava/i,/allison/i];for(const r of p){const m=vs.find(v=>r.test(v.name));if(m){VOICE=m;return;}}VOICE=vs.find(v=>/en-US/i.test(v.lang))||vs[0]||null;}
+/* localOnly=true → yalnızca cihazda çalıştığı doğrulanabilen (localService===true) sesleri seç.
+   Böylece izin yokken ses, uzak bir sağlayıcıya (ör. Google) gitmez. */
+function pickVoice(localOnly){var vs=(speechSynthesis.getVoices()||[]).filter(v=>/en[-_]/i.test(v.lang));if(localOnly)vs=vs.filter(v=>v&&v.localService===true);const p=[/natural/i,/samantha/i,/ava/i,/allison/i,/aria/i,/google us english/i];var chosen=null;for(const r of p){const m=vs.find(v=>r.test(v.name));if(m){chosen=m;break;}}if(!chosen)chosen=vs.find(v=>/en-US/i.test(v.lang))||vs[0]||null;if(!localOnly)VOICE=chosen;return chosen;}
 pickVoice(); if(typeof speechSynthesis!=='undefined')speechSynthesis.onvoiceschanged=pickVoice;
 /* Tüm seslendirme AVATARIN sesiyle (OpenAI TTS). Tarayıcı sesi yalnızca yedek. */
 var __tutorAudio=null, __ttsMem={}, __audioUnlocked=false;
@@ -477,7 +485,11 @@ function tutorAudioEl(){ if(!__tutorAudio){ __tutorAudio=new Audio(); try{__tuto
 var __SILENT_WAV='data:audio/wav;base64,UklGRqQHAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YYAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 function unlockTutorAudio(){ if(__audioUnlocked)return; try{ audioCtx(); waResume(); }catch(e){} try{ var a=tutorAudioEl(); a.src=__SILENT_WAV; a.muted=true; var p=a.play(); if(p&&p.then){ p.then(function(){ try{a.pause();a.currentTime=0;}catch(e){} a.muted=false; __audioUnlocked=true; }).catch(function(){ a.muted=false; }); } else { try{a.pause();}catch(e){} a.muted=false; __audioUnlocked=true; } }catch(e){} }
 try{ window.addEventListener('pointerdown',unlockTutorAudio,{capture:true}); window.addEventListener('touchstart',unlockTutorAudio,{capture:true}); }catch(e){}
-function browserSay(t,done){ try{ if(typeof speechSynthesis==='undefined'){ if(done)done(); return; } speechSynthesis.cancel(); if(!VOICE)pickVoice(); var u=new SpeechSynthesisUtterance(String(t)); u.lang='en-US'; if(VOICE)u.voice=VOICE; u.rate=Math.max(0.5,Math.min(1.5,0.95*userSpeed())); u.pitch=1; u.onend=function(){ if(done)done(); }; try{speechSynthesis.resume();}catch(_){} setTimeout(function(){try{speechSynthesis.speak(u);}catch(e){}},40);}catch(e){ if(done)done(); } }
+function browserSay(t,done){ try{ if(typeof speechSynthesis==='undefined'){ if(done)done(); return; }
+  var localOnly=(typeof AI_ENFORCE!=='undefined' && AI_ENFORCE && !aiAllowed()); /* izin yoksa yalnız yerel ses */
+  var voice = pickVoice(localOnly) || (localOnly?null:VOICE);
+  if(localOnly && !voice){ if(done)done(); return; } /* yerel sesli okuma yok → ses sunulmaz, yazılı akışla devam */
+  speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(String(t)); u.lang='en-US'; if(voice)u.voice=voice; u.rate=Math.max(0.5,Math.min(1.5,0.95*userSpeed())); u.pitch=1; u.onend=function(){ if(done)done(); }; try{speechSynthesis.resume();}catch(_){} setTimeout(function(){try{speechSynthesis.speak(u);}catch(e){}},40);}catch(e){ if(done)done(); } }
 var __ttsSeq=0;
 function tutorSpeak(text,done){ text=String(text==null?'':text); if(!text.trim()){ if(done)done(); return; }
   var myseq=++__ttsSeq; /* en son istenen seslendirme kazanır; geciken eski yanıt oynatıcıyı devralmasın */
@@ -514,6 +526,13 @@ function saveProfile(){ if(profile)profile.updatedAt=Date.now(); try{localStorag
 /* --- sunucu senkronu (backend kapalıysa hepsi no-op) --- */
 function getAuthToken(){ try{return localStorage.getItem(TKEY)||'';}catch(e){return '';} }
 function setAuthToken(t){ try{ if(t)localStorage.setItem(TKEY,t); else localStorage.removeItem(TKEY);}catch(e){} if(window.KelimeAPI)KelimeAPI.setToken(t||null); }
+/* ===== Yapay zekâ izni (OpenAI) — SUNUCUDAN okunur, varsayılan KAPALI =====
+   İzin profile.aiConsent'te tutulur ve saveProfile ile sunucuya yazılır (istemci bayrağı tek başına yetmez; backend de kayıtlı profili okur).
+   AI_ENFORCE: test aşamasında false (davranış değişmez). Kabul testinde/canlıda true yapılır ve backend ENFORCE_AI_CONSENT=1 ile eşleşir. */
+var AI_ENFORCE=false;
+function aiAllowed(){ return !!(profile && profile.aiConsent===true); }
+function refreshAiGate(){ try{ if(window.KelimeAPI&&KelimeAPI.setAi) KelimeAPI.setAi({allowed:aiAllowed(), enforce:AI_ENFORCE}); }catch(e){} }
+function setAiConsent(v){ if(!profile) return; profile.aiConsent=!!v; saveProfile(); refreshAiGate(); if(typeof scrDashboard==='function' && document.querySelector('.dash')) scrDashboard(); }
 let _pushT=null;
 function syncPush(){ if(!API_BASE||!window.KelimeAPI||!getAuthToken()||!profile)return; if(_pushT)clearTimeout(_pushT);
   _pushT=setTimeout(function(){ try{ KelimeAPI.saveProfile(profile); }catch(e){} }, 800); }
@@ -521,7 +540,7 @@ async function syncPull(){ if(!API_BASE||!window.KelimeAPI||!getAuthToken())retu
   try{ const r=await KelimeAPI.getProfile();
     if(r&&r.user&&r.user.profile&&!r.offline&&!r.error){ const sp=r.user.profile;
       const su=sp.updatedAt||0, lu=(profile&&profile.updatedAt)||0;
-      if(!profile || su>lu){ profile=sp; try{localStorage.setItem(PKEY,JSON.stringify(profile));}catch(e){} return true; }
+      if(!profile || su>lu){ profile=sp; try{localStorage.setItem(PKEY,JSON.stringify(profile));}catch(e){} refreshAiGate(); return true; }
       if(lu>su) syncPush();
     } }catch(e){}
   return false; }
@@ -744,7 +763,7 @@ async function doLogin(){ const email=(document.getElementById('lemail').value||
       profile=sp;                                                     /* bu hesabın sunucu profili; boşsa null → sıfırdan (önceki profil taşınmaz) */
       try{ if(profile) localStorage.setItem(PKEY,JSON.stringify(profile)); else localStorage.removeItem(PKEY); }catch(e){}
       try{ var _ci=TOPICS.findIndex(function(x){return x.id==='custom';}); if(_ci>=0) TOPICS.splice(_ci,1); }catch(e){} /* önceki hesabın özel konusunu kaldır */
-      restoreSaved(); restoreCustomTopic();                           /* favori + özel konu bu hesabın profilinden yeniden kurulsun */
+      restoreSaved(); restoreCustomTopic(); refreshAiGate();          /* favori + özel konu + yapay zekâ izni bu hesabın profilinden yeniden kurulsun */
       if(profileValid()) return scrDashboard();
       return scrRegister();                                           /* boş/eksik profil → kayıt/seviye testi (token korunur; doRegister upgrade eder) */
     }
@@ -775,7 +794,8 @@ async function doRegister(){ const name=(document.getElementById('rname').value|
   const emEl=document.getElementById('remail'), pwEl=document.getElementById('rpass');
   const email=emEl?(emEl.value||'').trim():'', password=pwEl?(pwEl.value||'').trim():'';
   const note=document.getElementById('rnote'), btn=document.querySelector('.footer .primary');
-  profile={name,age,joinDate:new Date().toISOString(),level:null,studied:{},known:{},lastTopicId:null,daysActive:[],subscribed:false,devOffset:0,levelStartCount:0,avatarId:(window.__pendingAvatar||''),updatedAt:Date.now()};
+  profile={name,age,joinDate:new Date().toISOString(),level:null,studied:{},known:{},lastTopicId:null,daysActive:[],subscribed:false,devOffset:0,levelStartCount:0,avatarId:(window.__pendingAvatar||''),aiConsent:false,updatedAt:Date.now()};
+  refreshAiGate(); /* yeni hesap: izin varsayılan KAPALI */
   if(API_BASE && window.KelimeAPI){
     if(btn){btn.disabled=true;btn.textContent='Kaydediliyor…';}
     try{
@@ -965,15 +985,19 @@ async function submitWriting(){ const ta=document.getElementById('wrt'); T.write
 }
 /* Bölüm 5 · Konuşma */
 function scrSpeaking(){ stopAll();
+  var aiOff=(typeof AI_ENFORCE!=='undefined' && AI_ENFORCE && !aiAllowed()); /* izin yoksa konuşma değerlendirmesi (ses→OpenAI) yapılmaz */
+  var micArea = aiOff
+    ? `<div class="wtext" id="sptr" style="min-height:60px;margin-top:12px">Yapay zekâ izni kapalı olduğundan konuşma kaydı değerlendirilmez. Dilersen soruyu sesli yanıtlamayı deneyebilirsin; bu bölümü atlayıp devam etmek için <b>Bitir</b>'e bas.</div>`
+    : `<button class="btn learn" id="micbtn" style="margin-top:12px;width:100%" onclick="speakRec()">🎙️ Kaydı başlat</button>
+        <div class="wtext" id="sptr" style="min-height:60px;margin-top:10px">Mikrofona basıp konuş; sesin kaydedilecek.</div>
+        <div class="wcount">Kaydından sonra dinleyebilirsin. Yazma ve konuşma için gerçek IELTS bandı, yapay zekâ ile puanlanacak.</div>`;
   app.innerHTML=`<div class="screen">
     ${testHdr(5,'Konuşma')}
     <div class="content" style="justify-content:flex-start;padding-top:10px">
       <div class="qcard" style="text-align:left"><div class="qsub">Konuşma görevi</div>
         <div class="qprompt">${SPEAKP}</div>
         <button class="opt" onclick="saySpeakPrompt()">🔊 Soruyu dinle</button>
-        <button class="btn learn" id="micbtn" style="margin-top:12px;width:100%" onclick="speakRec()">🎙️ Kaydı başlat</button>
-        <div class="wtext" id="sptr" style="min-height:60px;margin-top:10px">Mikrofona basıp konuş; sesin kaydedilecek.</div>
-        <div class="wcount">Kaydından sonra dinleyebilirsin. Yazma ve konuşma için gerçek IELTS bandı, yapay zekâ ile puanlanacak.</div>
+        ${micArea}
       </div>
     </div>
     <div class="footer"><button class="primary" onclick="finishSpeak()">Bitir → Sonuç</button></div>
@@ -1011,7 +1035,8 @@ function speakRec(){ const el=document.getElementById('sptr'); const b=document.
     if(b){ b.textContent='⏹️ Kaydı durdur'; b.classList.add('on'); }
     if(el)el.textContent='🎙️ Kaydediliyor… konuş (0 sn)';
     recTimer=setInterval(function(){ recSecs++; if(el&&mediaRec&&mediaRec.state==='recording')el.textContent='🎙️ Kaydediliyor… konuş ('+recSecs+' sn)'; },1000);
-    startSpeakSTT();
+    /* Otomatik tarayıcı konuşma tanıma (webkitSpeechRecognition) KALDIRILDI: sesi tarayıcı sağlayıcısına (ör. Google) gönderebiliyordu.
+       Değerlendirme yalnızca kayıt → backend (izinliyse) yoluyla yapılır; izin yoksa yazılı akışa düşülür. */
   }).catch(function(){ if(el)el.textContent='(Mikrofon izni verilmedi — izin verip tekrar dene, ya da yüksek sesle oku ve Bitir\'e bas.)'; });
 }
 /* Kaydı durdur ve ses dosyası (blob) hazır olana kadar BEKLE — "Bitir"e kayıt sürerken VEYA durdurduktan hemen sonra basılırsa değerlendirme kaçmasın. */
@@ -1135,6 +1160,10 @@ function scrDashboard(){ stopAll(); if(!profileValid())return scrRegister(); /* 
         ${last?`<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Kaldığın yer: ${last.emoji} ${last.name}</div>`:''}
         <button class="primary" style="width:100%" onclick="scrToday()">Bugün ne çalışalım? →</button>
       </div>
+      <div class="dlearn" style="margin-top:12px"><h4>🔒 Yapay zekâ izni</h4>
+        <p style="color:var(--muted);font-size:12.5px;margin:0 0 10px;line-height:1.5">Konuşma/yazma değerlendirme, sohbet, sesli anlatım ve fotoğraf analizi için ses, metin ve fotoğrafların değerlendirme amacıyla yurt dışındaki hizmet sağlayıcıya (OpenAI) gönderilir. İzin vermezsen bu özellikler kapalı kalır; kelime, favori ve tekrar çalışmaya devam eder. <a href="gizlilik.html" target="_blank" style="color:inherit">Ayrıntı</a></p>
+        <button class="${aiAllowed()?'ghost':'primary'}" style="width:100%" onclick="setAiConsent(${aiAllowed()?'false':'true'})">${aiAllowed()?'Yapay zekâ izni: Açık · kapat':'Yapay zekâ özelliklerine izin ver'}</button>
+      </div>
       <div class="devrow"><button onclick="devDay()">🔧 +1 gün (test)</button><button onclick="devReset()">🔧 üyeliği sıfırla</button></div>
     </div>
   </div></div>`;
@@ -1204,7 +1233,7 @@ var __paywallShown=false;
 window.__on402=function(){ if(__paywallShown)return; __paywallShown=true; if(profile){ profile.subscribed=false; } if(typeof scrPaywall==='function') scrPaywall(); };
 async function ensureToken(){ if(getAuthToken()||!API_BASE||!(window.KelimeAPI&&KelimeAPI.anon))return; try{ var r=await KelimeAPI.anon(); if(r&&r.token){ setAuthToken(r.token); } }catch(e){} }
 var __reanonBusy=false; window.__reanon=function(){ if(__reanonBusy)return; __reanonBusy=true; ensureToken().then(function(){ __reanonBusy=false; }); };
-function boot(){ loadProfile(); restoreSaved(); restoreCustomTopic(); const tok=getAuthToken(); if(tok&&window.KelimeAPI)KelimeAPI.setToken(tok); scrWelcome();
+function boot(){ loadProfile(); restoreSaved(); restoreCustomTopic(); refreshAiGate(); const tok=getAuthToken(); if(tok&&window.KelimeAPI)KelimeAPI.setToken(tok); scrWelcome();
   ensureToken().then(function(){ if(getAuthToken()&&API_BASE){ syncPull().then(function(ch){ if(ch){ restoreSaved(); restoreCustomTopic(); scrWelcome(); } }); } });
   try{ if(new URLSearchParams(location.search).get('paid')!=null) checkPaidReturn(); }catch(e){} }
 
@@ -1305,7 +1334,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s297</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s298</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button></div>
@@ -1753,7 +1782,8 @@ function scrChat(opts){ stopAll(); primeTTS(); opts=opts||{}; const photo=opts.p
   document.getElementById('ctxt').addEventListener('keydown',function(e){ if(e.key==='Enter'){e.preventDefault();document.getElementById('csend').click();} });
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition; const mic=document.getElementById('cmic');
   const setStatus=function(t){ const s=document.getElementById('cstatus'); if(s)s.textContent=t; };
-  if(SR){
+  /* Yapay zekâ izni kapalıyken tarayıcı konuşma tanıma BAŞLATILMAZ (ses sağlayıcıya gidebilir): mikrofonu gizle, yazarak devam. */
+  if(SR && aiAllowed()){
     mic.onclick=function(){
       if(chatListening){ try{chatRec&&chatRec.stop();}catch(_){}; return; }
       try{ speechSynthesis.cancel(); }catch(_){} try{ stopAll(); }catch(_){}

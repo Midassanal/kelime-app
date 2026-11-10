@@ -1,6 +1,6 @@
 /* Parlo service worker — app shell cache + Web Push.
    Not: push/notificationclick eklendi; cache adı parlo-v5'e yükseltildi (eski önbellekler temizlenir). */
-const CACHE = 'parlo-v5';
+const CACHE = 'parlo-v6';
 const ASSETS = [
   './', './index.html', './manifest.json',
   './icon-32.png', './icon-180.png', './icon-192.png', './icon-512.png',
@@ -32,12 +32,14 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       fetch(req).then((res) => {
         try {
-          const path = url.pathname;
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => {
-            if (/(mesafeli-satis|gizlilik|iptal-iade|iletisim)\.html$/.test(path)) c.put(req, copy);
-            else c.put('./index.html', copy); // uygulama girişi
-          });
+          if (res && res.ok) { // YALNIZ başarılı yanıt önbelleğe — 404/5xx cached index.html'i EZMESİN (çevrimdışı giriş bozulmasın)
+            const path = url.pathname;
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => {
+              if (/(mesafeli-satis|gizlilik|iptal-iade|iletisim)\.html$/.test(path)) c.put(req, copy);
+              else c.put('./index.html', copy); // uygulama girişi
+            });
+          }
         } catch (_) {}
         return res;
       }).catch(() => caches.match(req).then((m) => m || caches.match('./index.html')))
@@ -47,7 +49,7 @@ self.addEventListener('fetch', (e) => {
   // diğer GET: önce önbellek, sonra ağ
   e.respondWith(
     caches.match(req).then((m) => m || fetch(req).then((res) => {
-      try { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); } catch (_) {}
+      try { if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); } } catch (_) {}
       return res;
     }).catch(() => m))
   );

@@ -297,6 +297,7 @@ window.EMOJI={'abroad':'🌍','abstraction':'💡','acclaimed':'🎯','acclimati
     async login(email,password){ const r=await jfetch('/api/auth/login',{method:'POST',body:JSON.stringify({email,password})}); if(r.token)setToken(r.token); return r; },
     getProfile: ()=>jfetch('/api/profile'),
     saveProfile: (profile)=>jfetch('/api/profile',{method:'PUT',body:JSON.stringify({profile})}),
+    setConsent: (granted)=>jfetch('/api/profile/consent',{method:'POST',body:JSON.stringify({granted:!!granted})}),
     gradeWriting: (text,level)=> aiBlocked()?aiDeny():jfetch('/api/writing/grade',{method:'POST',body:JSON.stringify({text,level})}),
     extractVocab: (payload)=> aiBlocked()?aiDeny():jfetch('/api/vocab/extract',{method:'POST',body:JSON.stringify(payload||{})}),
     enrichVocab: (words,level,context)=> aiBlocked()?aiDeny():jfetch('/api/vocab/enrich',{method:'POST',body:JSON.stringify({words,level,context:context||undefined})}),
@@ -514,7 +515,8 @@ function tutorSpeak(text,done){ text=String(text==null?'':text); if(!text.trim()
 function tutorIsPlaying(){ try{ return !!(__tutorAudio && !__tutorAudio.paused && !__tutorAudio.ended && __tutorAudio.src); }catch(e){ return false; } }
 function tutorPauseResume(){ try{ var a=__tutorAudio; if(!a||!a.src)return 'none'; if(!a.paused){ a.pause(); return 'paused'; } var p=a.play(); if(p&&p.catch)p.catch(function(){}); return 'playing'; }catch(e){ return 'none'; } }
 function say(t,hyp){ var ctl={onend:null,onboundary:null}; tutorSpeak(t,function(){ if(typeof ctl.onend==='function')ctl.onend(); }); return ctl; }
-function stopAll(){try{__ttsSeq++;}catch(e){} try{speechSynthesis.cancel();}catch(e){} try{elifAudio.pause();}catch(e){} try{if(__tutorAudio)__tutorAudio.pause();}catch(e){}}
+var __chatMicStop=null; /* aktif sohbet mikrofon kaydını durduran kanca (scrChat kurar) — ekrandan çıkışta stopAll çağırır */
+function stopAll(){try{__ttsSeq++;}catch(e){} try{speechSynthesis.cancel();}catch(e){} try{elifAudio.pause();}catch(e){} try{if(__tutorAudio)__tutorAudio.pause();}catch(e){} try{ if(typeof __chatMicStop==='function') __chatMicStop(); }catch(e){}}
 const SPKICON=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 6a8 8 0 0 1 0 12"/></svg>`;
 
 /* ================= PROFİL & İLERLEME ================= */
@@ -536,9 +538,16 @@ function setAuthToken(t){ try{ if(t)localStorage.setItem(TKEY,t); else localStor
 var AI_ENFORCE=true; /* AÇIK: izin yoksa OpenAI uçlarına çağrı gitmez (backend ENFORCE_AI_CONSENT=1 ile eşleşmeli) */
 function aiAllowed(){ return !!(profile && profile.aiConsent===true); }
 function refreshAiGate(){ try{ if(window.KelimeAPI&&KelimeAPI.setAi) KelimeAPI.setAi({allowed:aiAllowed(), enforce:AI_ENFORCE}); }catch(e){} }
-function setAiConsent(v){ if(!profile) return; profile.aiConsent=!!v; profile.aiConsentAt=Date.now(); /* izin KARARININ zamanı → senkron bunu ezemez */ saveProfile(); syncPushNow(); refreshAiGate(); if(typeof scrDashboard==='function' && document.querySelector('.dash')) scrDashboard(); }
-/* Sunucu onaylı izin yazımı (başarı/başarısızlık döndürür). */
-async function writeAiConsentNow(){ if(!(API_BASE&&window.KelimeAPI&&getAuthToken()&&profile)) return true; try{ if(_pushT){clearTimeout(_pushT);_pushT=null;} var r=await KelimeAPI.saveProfile(profile); return !!(r && !r.error && !r.offline); }catch(e){ return false; } }
+function setAiConsent(v){ if(!profile) return; profile.aiConsent=!!v; profile.aiConsentAt=Date.now(); saveProfile(); refreshAiGate();
+  /* İzin SUNUCUDA yetkili: ayrı /consent ucuna yaz (sunucu zaman damgasını kendi atar). Genel profil senkronu izni değiştirmez. */
+  if(API_BASE&&window.KelimeAPI&&getAuthToken()&&KelimeAPI.setConsent){ try{ KelimeAPI.setConsent(!!v).then(function(r){ if(r&&r.user&&r.user.profile){ profile.aiConsent=!!r.user.profile.aiConsent; if(r.user.profile.aiConsentAt!=null)profile.aiConsentAt=r.user.profile.aiConsentAt; try{localStorage.setItem(PKEY,JSON.stringify(profile));}catch(e){} refreshAiGate(); } }); }catch(e){} }
+  syncPushNow(); /* profilin geri kalanı (ad vb.) için */
+  if(typeof scrDashboard==='function' && document.querySelector('.dash')) scrDashboard(); }
+/* Sunucu onaylı izin yazımı — SUNUCU-SIRALI /consent ucu. Başarı yalnız sunucunun KAYITLI kararı istenenle eşleşince true döner. */
+async function writeAiConsentNow(){ if(!(API_BASE&&window.KelimeAPI&&getAuthToken()&&profile)) return true; try{ var want=!!profile.aiConsent; if(!KelimeAPI.setConsent) return false; var r=await KelimeAPI.setConsent(want); if(!r || r.error || r.offline) return false;
+  var stored = (r.user && r.user.profile) ? r.user.profile : null;
+  if(stored){ profile.aiConsent=!!stored.aiConsent; if(stored.aiConsentAt!=null)profile.aiConsentAt=stored.aiConsentAt; try{localStorage.setItem(PKEY,JSON.stringify(profile));}catch(e){} refreshAiGate(); }
+  return !!(r.ok && r.aiConsent===want); }catch(e){ return false; } }
 /* Panel anahtarı: istemci kapısı ANINDA değişir; sunucu yanıtı beklenir ve durum DÜRÜSTÇE gösterilir
    (geri çekmede ekranda "kapatılıyor… → kapatıldı/kaydedilemedi"). Böylece "kaydedildi" iddiası ancak onayla gösterilir. */
 async function toggleAiConsent(){ if(!profile) return; var v=!aiAllowed();
@@ -576,6 +585,8 @@ async function syncPull(){ if(!API_BASE||!window.KelimeAPI||!getAuthToken())retu
     if(r&&r.user&&r.user.profile&&!r.offline&&!r.error){ const sp=r.user.profile;
       const su=sp.updatedAt||0, lu=(profile&&profile.updatedAt)||0;
       if(!profile || su>lu){ profile=sp; try{localStorage.setItem(PKEY,JSON.stringify(profile));}catch(e){} refreshAiGate(); return true; }
+      /* Profilin geri kalanı yerelde daha yeni olsa bile AI izni SUNUCUDA yetkilidir: sunucunun kararını istemciye uygula (eski cihaz izni ekranda yanlış 'açık' göstermesin). */
+      if(profile){ var _ch=false; if(!!profile.aiConsent!==!!sp.aiConsent){ profile.aiConsent=!!sp.aiConsent; _ch=true; } if(sp.aiConsentAt!=null && sp.aiConsentAt!==profile.aiConsentAt){ profile.aiConsentAt=sp.aiConsentAt; _ch=true; } if(_ch){ try{localStorage.setItem(PKEY,JSON.stringify(profile));}catch(e){} refreshAiGate(); } }
       if(lu>su) syncPush();
     } }catch(e){}
   return false; }
@@ -1271,7 +1282,7 @@ async function notifDisable(){
   }catch(e){ notifNote('Kapatılamadı: '+(e&&e.message?e.message:'hata')); if(btn){btn.disabled=false;} }
 }
 async function notifHourChange(v){ var h=parseInt(v,10); if(isNaN(h))return; var st=notifState(); st.hour=h; notifSave(st);
-  if(st.enabled){ try{ await KelimeAPI.pushPrefs({hour:h, tzOffset:new Date().getTimezoneOffset()}); notifNote('✓ Saat güncellendi: '+((h<10?'0'+h:h))+':00'); }catch(e){ notifNote('Saat kaydedilemedi.'); } } }
+  if(st.enabled){ try{ var r=await KelimeAPI.pushPrefs({hour:h, tzOffset:new Date().getTimezoneOffset()}); if(r&&r.ok) notifNote('✓ Saat güncellendi: '+((h<10?'0'+h:h))+':00'); else notifNote('Saat kaydedilemedi — bağlantını kontrol edip tekrar dene.'); }catch(e){ notifNote('Saat kaydedilemedi.'); } } }
 async function notifSendTest(){ notifNote('Deneme gönderiliyor…'); try{ var r=await KelimeAPI.pushTest(); if(r&&r.ok&&r.sent>0) notifNote('✓ Deneme gönderildi ('+r.sent+' cihaz). Birkaç saniyede gelmeli.'); else if(r&&r.error==='push_disabled') notifNote('Sunucuda bildirim etkin değil.'); else notifNote('Gönderilemedi — bildirim açık mı?'); }catch(e){ notifNote('Gönderilemedi.'); } }
 /* ===== Gelişim ekranı (son 30 gün) ===== */
 function scrProgress(){ stopAll();
@@ -1327,9 +1338,12 @@ async function wtPronCheck(){ var w=WT.pron[WT.pronI]; var btn=document.querySel
   await finishRecording();
   var MIN_AUDIO=1200; /* seviye testiyle aynı eşik: boş/çok kısa kayıt gönderilmez, sayaç da artmaz */
   if(!(T&&T.speakBlob) || T.speakBlob.size<MIN_AUDIO){ if(el)el.textContent='Kaydı alamadım — mikrofona basıp kelimeyi net söyle.'; if(btn){btn.disabled=false;btn.textContent='Kontrol et';} return; }
-  var transcript='';
-  try{ var r=await KelimeAPI.gradeSpeakingAudio(T.speakBlob,(profile&&profile.level)||'A2'); transcript=(r&&r.transcript)||''; }catch(e){}
-  logDaily('konusma',1); /* yalnızca geçerli (yeterli uzunlukta) kayıt gönderildiğinde say */ if(btn){btn.disabled=false;btn.textContent='Kontrol et';}
+  var transcript='', r=null, netErr=false;
+  try{ r=await KelimeAPI.gradeSpeakingAudio(T.speakBlob,(profile&&profile.level)||'A2'); }catch(e){ netErr=true; }
+  if(!netErr && (!r || r.offline || r.error || r.blocked)) netErr=true;
+  if(netErr){ if(el)el.textContent='Bağlanamadım — tekrar dene (deneme hakkın harcanmadı).'; if(btn){btn.disabled=false;btn.textContent='Kontrol et';} return; } /* bağlantı/servis hatası: konuşma sayacı ARTMAZ, deneme TÜKENMEZ */
+  transcript=(r&&r.transcript)||'';
+  logDaily('konusma',1); /* yalnızca sunucu yanıt verdiğinde (geçerli kayıt) say */ if(btn){btn.disabled=false;btn.textContent='Kontrol et';}
   var said=wtNorm(transcript), target=wtNorm(w);
   var hit=!!said && (said===target || said.split(' ').indexOf(target)>=0); /* TAM kelime/ifade eşleşmesi — alt-dize değil (rain ≠ train) */
   if(hit){ WT.pronScore++; if(el)el.innerHTML='✓ Doğru: "'+esc(transcript||w)+'"'; setTimeout(wtPronNext,700); }
@@ -1503,7 +1517,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s310</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s311</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>
@@ -1964,33 +1978,39 @@ function scrChat(opts){ stopAll(); primeTTS(); opts=opts||{}; const photo=opts.p
      gider, tek açık rıza kapsamında. İzin yoksa mikrofon gizlenir, yazarak devam edilir. */
   const cmicOk = navigator.mediaDevices && navigator.mediaDevices.getUserMedia && typeof MediaRecorder!=='undefined';
   if(cmicOk && aiAllowed()){
-    var cMR=null, cStream=null, cChunks=[]; const CMIN=1200; /* backend ile aynı eşik: altı boş/çok kısa sayılır */
+    var cMR=null, cStream=null, cChunks=[], cCancelled=false; const CMIN=1200; /* backend ile aynı eşik: altı boş/çok kısa sayılır */
     const cReset=function(){ chatListening=false; mic.classList.remove('on'); };
+    const cStopTracks=function(){ if(cStream){ try{ cStream.getTracks().forEach(function(t){t.stop();}); }catch(_){} cStream=null; } };
+    /* Ekrandan çıkışta (stopAll) kaydı DURDUR, mikrofon kanalını KAPAT ve bekleyen transkripsiyonu İPTAL et. */
+    __chatMicStop=function(){ cCancelled=true; try{ cMR && cMR.state==='recording' && cMR.stop(); }catch(_){}; cStopTracks(); cReset(); };
     mic.onclick=function(){
       if(chatListening){ try{ cMR && cMR.state==='recording' && cMR.stop(); }catch(_){}; return; }
-      try{ speechSynthesis.cancel(); }catch(_){} try{ stopAll(); }catch(_){}
+      try{ stopAll(); }catch(_){}        /* önce oynatmayı durdur (bu bizim __chatMicStop'u da tetikler; aşağıda yeniden kurarız) */
+      cCancelled=false;                   /* stopAll SONRASI yeniden kur → yeni kayıt iptal sayılmasın */
       var box=document.getElementById('ctxt'); if(box)box.value='';
       navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
+        if(cCancelled){ try{ stream.getTracks().forEach(function(t){t.stop();}); }catch(_){} return; } /* izin beklerken ekrandan çıkıldıysa */
         cStream=stream; cChunks=[];
-        try{ cMR=new MediaRecorder(stream); }catch(e){ try{ cMR=new MediaRecorder(stream,{mimeType:'audio/webm'}); }catch(e2){ setStatus('ses başlatılamadı — yazarak dene'); cReset(); return; } }
+        try{ cMR=new MediaRecorder(stream); }catch(e){ try{ cMR=new MediaRecorder(stream,{mimeType:'audio/webm'}); }catch(e2){ setStatus('ses başlatılamadı — yazarak dene'); cStopTracks(); cReset(); return; } }
         cMR.ondataavailable=function(ev){ if(ev.data&&ev.data.size>0)cChunks.push(ev.data); };
         cMR.onstop=function(){
-          if(cStream){ try{ cStream.getTracks().forEach(function(t){t.stop();}); }catch(_){} cStream=null; }
-          cReset();
+          cStopTracks(); cReset();
+          if(cCancelled){ return; }        /* ekrandan çıkıldı → eski sohbetin sesini çözümleme/gönderme */
           var blob=null; try{ blob=new Blob(cChunks,{type:(cMR&&cMR.mimeType)||'audio/webm'}); }catch(e){}
           if(!blob || blob.size<CMIN){ setStatus('seni duyamadım — 🎤 tekrar dokun ya da yaz ✍️'); return; }
           setStatus('🎤 çözümleniyor…');
           KelimeAPI.gradeSpeakingAudio(blob,(profile&&profile.level)||'A2').then(function(r){
+            if(cCancelled) return;         /* yanıt gelene dek çıkıldıysa gönderme */
             if(r&&r.blocked){ setStatus('yapay zekâ izni gerekli — yazarak devam et'); return; }
             var txt=(r&&r.transcript)?String(r.transcript).trim():'';
             if(txt){ setStatus('çevrimiçi · konuşma partnerin'); chatUser(txt); }
             else setStatus('seni net duyamadım — 🎤 tekrar dokun ya da yaz ✍️');
-          }).catch(function(){ setStatus('bağlanamadım — yazarak dene'); });
+          }).catch(function(){ if(!cCancelled) setStatus('bağlanamadım — yazarak dene'); });
         };
-        try{ cMR.start(); chatListening=true; mic.classList.add('on'); setStatus('🎤 dinliyor… bitince 🎤 tekrar dokun'); }catch(e){ cReset(); setStatus('🎤 tekrar dokun'); }
-      }).catch(function(){ cReset(); setStatus('🎤 mikrofon izni yok — yazarak dene'); });
+        try{ cMR.start(); chatListening=true; mic.classList.add('on'); setStatus('🎤 dinliyor… bitince 🎤 tekrar dokun'); }catch(e){ cStopTracks(); cReset(); setStatus('🎤 tekrar dokun'); }
+      }).catch(function(){ cStopTracks(); cReset(); setStatus('🎤 mikrofon izni yok — yazarak dene'); });
     };
-  } else { mic.style.display='none'; }
+  } else { mic.style.display='none'; __chatMicStop=null; }
   // açılış
   if(chatMode==='photo'){ cbot("What a nice photo! 🌸 Let's talk about it together."); setTimeout(chatNext, 1400); }
   else { var opener="Hi! I'm "+tutorName()+". 😊 Let's have a friendly little chat in English. How are you doing today?"; cbot(opener); chatHistory.push({role:'assistant',text:opener}); }
@@ -2111,7 +2131,7 @@ function scrPhoto(){ stopAll();
   if(PHOTO) renderPhotoActions();
 }
 function onPhoto(input){ const f=input.files&&input.files[0]; if(!f)return;
-  const rd=new FileReader(); rd.onload=function(){ PHOTO=rd.result; renderPhotoActions(); }; rd.readAsDataURL(f); }
+  var ep=__uploadEpoch; const rd=new FileReader(); rd.onload=function(){ if(ep!==__uploadEpoch)return; /* okuma sırasında temizlendi → yazma */ PHOTO=rd.result; renderPhotoActions(); }; rd.readAsDataURL(f); }
 function renderPhotoActions(){
   const pv=document.getElementById('ppreview'); if(pv)pv.innerHTML=PHOTO?`<img class="photoprev" src="${PHOTO}" alt="seçilen fotoğraf">`:'';
   const a=document.getElementById('pactions'); if(!a)return;
@@ -2124,11 +2144,12 @@ function renderPhotoActions(){
   </div>`:'';
 }
 /* Yüklenen görseli (fotoğraf/belge) bellekten temizle — kullanıcı isteğiyle VEYA çalışma bitince. */
-function clearUpload(){ try{ PHOTO=null; }catch(e){} try{ IMPORT_IMG=null; }catch(e){} try{ IMPORT_TEXT=''; }catch(e){} /* içe aktarılan BELGE metni de bellekten silinsin */
+var __uploadEpoch=0; /* her temizlikte artar; geciken FileReader okumaları epoch değiştiyse yazmayı reddeder */
+function clearUpload(){ __uploadEpoch++; try{ PHOTO=null; }catch(e){} try{ IMPORT_IMG=null; }catch(e){} try{ IMPORT_TEXT=''; }catch(e){} /* içe aktarılan BELGE metni de bellekten silinsin */
   var pv=document.getElementById('ppreview'); if(pv)pv.innerHTML=''; var a=document.getElementById('pactions'); if(a)a.innerHTML='';
   try{ var it=document.getElementById('itext'); if(it)it.value=''; var ip=document.getElementById('ipreview'); if(ip)ip.innerHTML=''; }catch(e){} /* içe aktarma metin kutusu + önizleme */
   /* Dosya GİRİŞLERİNİ de sıfırla → aynı dosya tekrar seçilebilsin ve tarayıcıda dosya tutamacı kalmasın. */
-  try{ ['pcam','pgal','ifile','ifilei'].forEach(function(id){ var el=document.getElementById(id); if(el){ try{ el.value=''; }catch(e){} } }); }catch(e){}
+  try{ ['pcam','pgal','ifile','iimg','ifilei'].forEach(function(id){ var el=document.getElementById(id); if(el){ try{ el.value=''; }catch(e){} } }); }catch(e){} /* iimg: içe aktarma görsel dosya alanı da sıfırlanır */
   /* Açık ekranda kalmış olabilecek görsel küçük resimlerini/önizlemelerini kaldır. */
   try{ document.querySelectorAll('.photothumb, .photoprev').forEach(function(el){ el.remove(); }); }catch(e){} }
 function photoTalk(){ if(!PHOTO)return; needAi(function(){ gateStart(function(){ scrChat({photo:PHOTO}); }); }); }
@@ -2241,9 +2262,9 @@ function scrImport(){ stopAll(); IMPORT_TEXT=''; IMPORT_IMG=null; IMPORT_WORDS=n
 }
 function importTextChanged(){ const ta=document.getElementById('itext'); IMPORT_TEXT=ta?ta.value:''; if(IMPORT_TEXT.trim())IMPORT_IMG=null; renderImportPreview(); renderImportActions(); }
 function onImport(input, kind){ const f=input.files&&input.files[0]; if(!f)return;
-  const rd=new FileReader();
-  if(kind==='img'){ rd.onload=function(){ IMPORT_IMG=rd.result; IMPORT_TEXT=''; const ta=document.getElementById('itext'); if(ta)ta.value=''; renderImportPreview(); renderImportActions(); }; rd.readAsDataURL(f); }
-  else { rd.onload=function(){ IMPORT_TEXT=String(rd.result||''); IMPORT_IMG=null; renderImportPreview(); renderImportActions(); }; rd.readAsText(f); }
+  var ep=__uploadEpoch; const rd=new FileReader();
+  if(kind==='img'){ rd.onload=function(){ if(ep!==__uploadEpoch)return; IMPORT_IMG=rd.result; IMPORT_TEXT=''; const ta=document.getElementById('itext'); if(ta)ta.value=''; renderImportPreview(); renderImportActions(); }; rd.readAsDataURL(f); }
+  else { rd.onload=function(){ if(ep!==__uploadEpoch)return; IMPORT_TEXT=String(rd.result||''); IMPORT_IMG=null; renderImportPreview(); renderImportActions(); }; rd.readAsText(f); }
 }
 function renderImportPreview(){ const pv=document.getElementById('ipreview'); if(!pv)return;
   if(IMPORT_IMG) pv.innerHTML='<img class="photoprev" src="'+IMPORT_IMG+'">';

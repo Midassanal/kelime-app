@@ -1204,6 +1204,7 @@ function scrDashboard(){ stopAll(); try{ PHOTO=null; IMPORT_IMG=null; }catch(e){
         ${last?`<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Kaldığın yer: ${last.emoji} ${last.name}</div>`:''}
         <button class="primary" style="width:100%" onclick="scrToday()">Bugün ne çalışalım? →</button>
         <button class="opt" style="width:100%;margin-top:10px" onclick="scrProgress()">📈 Gelişimim</button>
+        ${(weeklyDue()&&weeklyLearned().length>=10)?`<button class="opt" style="width:100%;margin-top:10px;border-color:#e3b3a6;color:#c9503c;font-weight:800" onclick="scrWeekly()">📝 Haftalık testin hazır →</button>`:`<button class="opt" style="width:100%;margin-top:10px" onclick="scrWeekly()">📝 Haftalık test</button>`}
       </div>
       <div class="dlearn" style="margin-top:12px"><h4>🔒 Yapay zekâ izni</h4>
         <p style="color:var(--muted);font-size:12.5px;margin:0 0 10px;line-height:1.5">Konuşma/yazma değerlendirme, sohbet, sesli anlatım ve fotoğraf analizi için ses, metin ve fotoğrafların değerlendirme amacıyla yurt dışındaki hizmet sağlayıcıya (OpenAI) gönderilir. İzin vermezsen bu özellikler kapalı kalır; kelime, favori ve tekrar çalışmaya devam eder. <a href="gizlilik.html" target="_blank" style="color:inherit">Ayrıntı</a></p>
@@ -1240,6 +1241,50 @@ function scrProgress(){ stopAll();
    +'</div></div></div>';
 }
 
+/* ===== Haftalık test (öğrenilen kelimelerden; görsel + yazma + telaffuz) ===== */
+function wtShuffle(a){ a=a.slice(); for(var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+function weeklyLearned(){ var set={}; try{ if(profile&&profile.studied){ Object.keys(profile.studied).forEach(function(t){ (profile.studied[t]||[]).forEach(function(w){ var k=String(w).toLowerCase(); if(set[k])return; var d=wordData(w); if(d&&d.mean) set[k]={w:(d.w||w),mean:d.mean}; }); }); } }catch(e){} return Object.keys(set).map(function(k){return set[k];}); }
+function weeklyDue(){ try{ var last=profile&&profile.lastWeeklyTest; if(!last)return true; return (Date.now()-Number(last))>=7*86400000; }catch(e){ return true; } }
+var WT=null;
+function scrWeekly(){ stopAll(); var L=weeklyLearned();
+  if(L.length<10){ app.innerHTML='<div class="screen"><div class="hdr"><button class="back" onclick="scrDashboard()">‹ Panel</button><span class="phase">Haftalık test</span></div><div class="content"><div class="welcome"><h1>Haftalık test 📝</h1><p>Test için en az <b>10 öğrenilen kelime</b> gerekiyor. Şu an <b>'+L.length+'</b> kelimen var — biraz daha çalışınca açılacak.</p></div><button class="primary" style="width:100%" onclick="scrToday()">Çalışmaya devam →</button></div></div>'; return; }
+  app.innerHTML='<div class="screen"><div class="hdr"><button class="back" onclick="scrDashboard()">‹ Panel</button><span class="phase">Haftalık test</span></div><div class="content"><div class="welcome"><h1>Haftalık test 📝</h1><p>Öğrendiğin kelimelerden 3 bölümlük kısa bir test.</p></div><div class="dlearn"><div style="color:var(--muted);font-size:13px;line-height:1.7">1) Görselden doğru anlamı seç (5 soru)<br>2) Birkaç kelimeyle kısa bir hikâye yaz<br>3) Kelimeleri sesli söyle</div></div><button class="primary" style="width:100%;margin-top:14px" onclick="wtBegin()">Teste başla →</button></div></div>'; }
+function wtBegin(){ var L=wtShuffle(weeklyLearned()); WT={ pool:L, mcq:L.slice(0,5), mcqI:0, mcqScore:0, storyWords:L.slice(0,5).map(function(x){return x.w;}), pron:L.slice(0,3).map(function(x){return x.w;}), pronI:0, pronScore:0, tries:0, storyDone:false }; wtMcq(); }
+function wtMcq(){ var q=WT.mcq[WT.mcqI]; var opts=[q.mean]; var others=wtShuffle(WT.pool.filter(function(x){ return x.mean && x.mean!==q.mean; }));
+  for(var i=0;i<others.length && opts.length<4;i++){ if(opts.indexOf(others[i].mean)<0) opts.push(others[i].mean); } opts=wtShuffle(opts);
+  var imgwrap='<div class="imgwrap" style="position:relative;border-radius:16px;overflow:hidden;margin-bottom:12px">'+artFor(q.w)+'<img src="'+staticImgURL(q.w)+'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.remove()"></div>';
+  var btns=opts.map(function(o){ return '<button class="opt" style="width:100%;margin-top:8px" onclick="wtMcqAns('+(o===q.mean?'true':'false')+')">'+esc(o)+'</button>'; }).join('');
+  app.innerHTML='<div class="screen"><div class="hdr"><button class="back" onclick="scrDashboard()">‹ Çık</button><span class="phase">Görsel '+(WT.mcqI+1)+'/'+WT.mcq.length+'</span></div><div class="content" style="padding-top:8px"><div class="qcard" style="text-align:left"><div class="qsub">Bu görsel hangi kelime?</div>'+imgwrap+btns+'</div></div></div>'; }
+function wtMcqAns(correct){ if(correct)WT.mcqScore++; WT.mcqI++; if(WT.mcqI<WT.mcq.length) wtMcq(); else aiConsentAsk(wtStory, wtFinish); }
+function wtStory(){ app.innerHTML='<div class="screen"><div class="hdr"><button class="back" onclick="scrDashboard()">‹ Çık</button><span class="phase">Yazma</span></div><div class="content" style="padding-top:8px"><div class="qcard" style="text-align:left"><div class="qsub">Şu kelimelerle kısa bir hikâye yaz (2–4 cümle):</div><div style="margin:8px 0;font-weight:700;color:#c9503c">'+WT.storyWords.map(esc).join(' · ')+'</div><textarea id="wtstory" style="width:100%;min-height:120px;border:1px solid var(--line);border-radius:12px;padding:10px;font-size:14px;box-sizing:border-box" placeholder="Write a short story..."></textarea><div id="wtsfb" style="margin-top:10px"></div></div></div><div class="footer"><button class="primary" onclick="wtGradeStory()">Değerlendir →</button></div></div>'; }
+async function wtGradeStory(){ var ta=document.getElementById('wtstory'); var text=ta?ta.value.trim():''; var fb=document.getElementById('wtsfb');
+  if(text.length<3){ if(fb)fb.innerHTML='<span style="color:var(--muted);font-size:13px">Birkaç cümle yazıp dene 🙂</span>'; return; }
+  logDaily('yazma',1); var btn=document.querySelector('.footer .primary'); if(btn){btn.disabled=true;btn.textContent='Değerlendiriliyor…';}
+  var local=(typeof correctText==='function')?correctText(text):{text:text,changes:[]}; var api=null;
+  try{ var r=await KelimeAPI.gradeWriting(text,(profile&&profile.level)||'A2'); if(r&&r.result&&!r.offline&&!r.error)api=Object.assign({mock:!!r.mock},r.result); }catch(e){}
+  if(fb)fb.innerHTML=writeFeedbackHtml(text,local,api); WT.storyDone=true;
+  if(btn){ btn.disabled=false; btn.textContent='Devam → Telaffuz'; btn.onclick=function(){ wtPron(); }; } }
+function wtPron(){ WT.tries=0; var w=WT.pron[WT.pronI]; T.speakBlob=null;
+  app.innerHTML='<div class="screen"><div class="hdr"><button class="back" onclick="scrDashboard()">‹ Çık</button><span class="phase">Telaffuz '+(WT.pronI+1)+'/'+WT.pron.length+'</span></div><div class="content" style="padding-top:8px"><div class="qcard" style="text-align:center"><div class="qsub">Bu kelimeyi sesli söyle:</div><div style="font-size:34px;font-weight:900;margin:10px 0;color:#c9503c">'+esc(w)+'</div><button class="opt" onclick="say('+jsq(w)+',false)">🔊 Dinle</button><button class="btn learn" id="micbtn" style="margin-top:12px;width:100%" onclick="speakRec()">🎙️ Söyle</button><div class="wtext" id="sptr" style="min-height:44px;margin-top:10px">Mikrofona bas ve kelimeyi söyle.</div></div></div><div class="footer"><button class="opt" style="flex:none;padding:0 14px" onclick="wtPronSkip()">Atla</button><button class="primary" style="flex:1" onclick="wtPronCheck()">Kontrol et</button></div></div>'; }
+function wtNorm(s){ return String(s||'').toLowerCase().replace(/[^a-zçğıöşü ]/gi,'').trim(); }
+async function wtPronCheck(){ var w=WT.pron[WT.pronI]; var btn=document.querySelector('.footer .primary'); var el=document.getElementById('sptr');
+  if(btn){btn.disabled=true;btn.textContent='Dinleniyor…';}
+  await finishRecording();
+  if(!(T&&T.speakBlob)){ if(el)el.textContent='Kaydı alamadım — mikrofona basıp tekrar söyle.'; if(btn){btn.disabled=false;btn.textContent='Kontrol et';} return; }
+  var transcript='';
+  try{ var r=await KelimeAPI.gradeSpeakingAudio(T.speakBlob,(profile&&profile.level)||'A2'); transcript=(r&&r.transcript)||''; }catch(e){}
+  logDaily('konusma',1); if(btn){btn.disabled=false;btn.textContent='Kontrol et';}
+  var said=wtNorm(transcript), target=wtNorm(w);
+  var hit=said && (said===target || said.split(' ').indexOf(target)>=0 || (target.length>3 && said.indexOf(target)>=0));
+  if(hit){ WT.pronScore++; if(el)el.innerHTML='✓ Doğru: "'+esc(transcript||w)+'"'; setTimeout(wtPronNext,700); }
+  else { WT.tries++; if(WT.tries>=2){ if(el)el.innerHTML='Bu kelimeyi geçiyoruz'+(transcript?(' (duyduğum: "'+esc(transcript)+'")'):'')+'.'; setTimeout(wtPronNext,900); } else { if(el)el.innerHTML='⚠️ Tam anlayamadım'+(transcript?(' (duyduğum: "'+esc(transcript)+'")'):'')+'. Tekrar dene.'; } } }
+function wtPronSkip(){ wtPronNext(); }
+function wtPronNext(){ WT.pronI++; WT.tries=0; if(WT.pronI<WT.pron.length) wtPron(); else wtFinish(); }
+function wtFinish(){ try{ profile.lastWeeklyTest=Date.now(); saveProfile(); }catch(e){} var hasAi=!!(WT&&WT.storyDone);
+  app.innerHTML='<div class="screen"><div class="hdr"><button class="back" onclick="scrDashboard()">‹ Panel</button><span class="phase">Haftalık test</span></div><div class="content" style="padding-top:8px"><div class="welcome"><h1>Tebrikler 🎉</h1><p>Haftalık testini tamamladın. Bir hafta sonra yenisi açılacak.</p></div>'
+   +'<div class="statgrid" style="display:flex;gap:8px"><div class="stat" style="flex:1"><div class="n">'+WT.mcqScore+'/'+WT.mcq.length+'</div><div class="l">görsel doğru</div></div>'+(hasAi?('<div class="stat" style="flex:1"><div class="n">'+WT.pronScore+'/'+WT.pron.length+'</div><div class="l">telaffuz doğru</div></div>'):'')+'</div>'
+   +(hasAi?'':'<div class="dlearn" style="margin-top:12px"><div style="color:var(--muted);font-size:13px">Yazma ve telaffuz bölümleri yapay zekâ izni ister; izin verince tam test açılır.</div></div>')
+   +'<button class="primary" style="width:100%;margin-top:14px" onclick="scrDashboard()">Panele dön</button></div></div>'; }
 /* ---- ÜYELİK ---- */
 function scrPaywall(){ stopAll();
   var _ended=(typeof trialLocked==='function')?trialLocked():false;
@@ -1402,7 +1447,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s306</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s307</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>
@@ -2277,7 +2322,7 @@ function attachSwipe(card,onLeft,onRight){
 }
 
 Object.assign(window,{scrTopics,pickTopic,startSelect,selDecide,toggleHide,toggleSave,cardGo,setMode,toggleNormal,toggleElif,openSheet,closeSheet,sheetSave,say,scrProduce,p1skip,p1next,bankTap,produceS1,produceS2,produceS3,scrDone,
-  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,scrProgress,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar,cancelSub,chatPlayPause,avatarTap});
+  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,scrProgress,scrWeekly,wtBegin,wtMcqAns,wtStory,wtGradeStory,wtPron,wtPronCheck,wtPronSkip,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar,cancelSub,chatPlayPause,avatarTap});
 boot();
 </script>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>

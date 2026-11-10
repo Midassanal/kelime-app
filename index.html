@@ -532,13 +532,13 @@ function setAuthToken(t){ try{ if(t)localStorage.setItem(TKEY,t); else localStor
 var AI_ENFORCE=true; /* AÇIK: izin yoksa OpenAI uçlarına çağrı gitmez (backend ENFORCE_AI_CONSENT=1 ile eşleşmeli) */
 function aiAllowed(){ return !!(profile && profile.aiConsent===true); }
 function refreshAiGate(){ try{ if(window.KelimeAPI&&KelimeAPI.setAi) KelimeAPI.setAi({allowed:aiAllowed(), enforce:AI_ENFORCE}); }catch(e){} }
-function setAiConsent(v){ if(!profile) return; profile.aiConsent=!!v; saveProfile(); syncPushNow(); /* izin değişikliği ANINDA sunucuya yazılır */ refreshAiGate(); if(typeof scrDashboard==='function' && document.querySelector('.dash')) scrDashboard(); }
+function setAiConsent(v){ if(!profile) return; profile.aiConsent=!!v; profile.aiConsentAt=Date.now(); /* izin KARARININ zamanı → senkron bunu ezemez */ saveProfile(); syncPushNow(); refreshAiGate(); if(typeof scrDashboard==='function' && document.querySelector('.dash')) scrDashboard(); }
 /* Sunucu onaylı izin yazımı (başarı/başarısızlık döndürür). */
 async function writeAiConsentNow(){ if(!(API_BASE&&window.KelimeAPI&&getAuthToken()&&profile)) return true; try{ if(_pushT){clearTimeout(_pushT);_pushT=null;} var r=await KelimeAPI.saveProfile(profile); return !!(r && !r.error && !r.offline); }catch(e){ return false; } }
 /* Panel anahtarı: istemci kapısı ANINDA değişir; sunucu yanıtı beklenir ve durum DÜRÜSTÇE gösterilir
    (geri çekmede ekranda "kapatılıyor… → kapatıldı/kaydedilemedi"). Böylece "kaydedildi" iddiası ancak onayla gösterilir. */
 async function toggleAiConsent(){ if(!profile) return; var v=!aiAllowed();
-  profile.aiConsent=v; try{ profile.updatedAt=Date.now(); localStorage.setItem(PKEY,JSON.stringify(profile)); }catch(e){}
+  profile.aiConsent=v; profile.aiConsentAt=Date.now(); try{ profile.updatedAt=Date.now(); localStorage.setItem(PKEY,JSON.stringify(profile)); }catch(e){}
   refreshAiGate(); /* güvenlik: geri çekince istek hemen durur (sunucu yanıtı beklenmez) */
   var b=document.getElementById('aiTgl'); if(b){ b.disabled=true; b.textContent=(v?'İzin açılıyor…':'İzin kapatılıyor…'); }
   var ok=await writeAiConsentNow();
@@ -838,7 +838,7 @@ async function doRegister(){ const name=(document.getElementById('rname').value|
     if(!email){ if(note)note.textContent='Devam etmek için e-posta gerekli.'; return; }
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ if(note)note.textContent='Geçerli bir e-posta adresi gir.'; return; }
   }
-  profile={name,joinDate:new Date().toISOString(),level:null,studied:{},known:{},lastTopicId:null,daysActive:[],subscribed:false,devOffset:0,levelStartCount:0,avatarId:(window.__pendingAvatar||''),aiConsent:false,updatedAt:Date.now()};
+  profile={name,joinDate:new Date().toISOString(),level:null,studied:{},known:{},lastTopicId:null,daysActive:[],subscribed:false,devOffset:0,levelStartCount:0,avatarId:(window.__pendingAvatar||''),aiConsent:false,aiConsentAt:Date.now(),updatedAt:Date.now()};
   refreshAiGate(); /* yeni hesap: izin varsayılan KAPALI */
   if(API_BASE && window.KelimeAPI){
     if(btn){btn.disabled=true;btn.textContent='Kaydediliyor…';}
@@ -1248,7 +1248,7 @@ function weeklyDue(){ try{ var last=profile&&profile.lastWeeklyTest; if(!last)re
 var WT=null;
 function scrWeekly(){ stopAll(); var L=weeklyLearned();
   if(L.length<10){ app.innerHTML='<div class="screen"><div class="hdr"><button class="back" onclick="scrDashboard()">‹ Panel</button><span class="phase">Haftalık test</span></div><div class="content"><div class="welcome"><h1>Haftalık test 📝</h1><p>Test için en az <b>10 öğrenilen kelime</b> gerekiyor. Şu an <b>'+L.length+'</b> kelimen var — biraz daha çalışınca açılacak.</p></div><button class="primary" style="width:100%" onclick="scrToday()">Çalışmaya devam →</button></div></div>'; return; }
-  app.innerHTML='<div class="screen"><div class="hdr"><button class="back" onclick="scrDashboard()">‹ Panel</button><span class="phase">Haftalık test</span></div><div class="content"><div class="welcome"><h1>Haftalık test 📝</h1><p>Öğrendiğin kelimelerden 3 bölümlük kısa bir test.</p></div><div class="dlearn"><div style="color:var(--muted);font-size:13px;line-height:1.7">1) Görselden doğru anlamı seç (5 soru)<br>2) Birkaç kelimeyle kısa bir hikâye yaz<br>3) Kelimeleri sesli söyle</div></div><button class="primary" style="width:100%;margin-top:14px" onclick="wtBegin()">Teste başla →</button></div></div>'; }
+  app.innerHTML='<div class="screen"><div class="hdr"><button class="back" onclick="scrDashboard()">‹ Panel</button><span class="phase">Haftalık test</span></div><div class="content"><div class="welcome"><h1>Haftalık test 📝</h1><p>Öğrendiğin kelimelerden 3 bölümlük kısa bir test.'+(weeklyDue()?'':' <br><span style="color:var(--muted);font-size:12px">Bu haftaki testini çözdün — dilersen tekrar deneyebilirsin.</span>')+'</p></div><div class="dlearn"><div style="color:var(--muted);font-size:13px;line-height:1.7">1) Görselden doğru anlamı seç (5 soru)<br>2) Birkaç kelimeyle kısa bir hikâye yaz<br>3) Kelimeleri sesli söyle</div></div><button class="primary" style="width:100%;margin-top:14px" onclick="wtBegin()">Teste başla →</button></div></div>'; }
 function wtBegin(){ var L=wtShuffle(weeklyLearned()); WT={ pool:L, mcq:L.slice(0,5), mcqI:0, mcqScore:0, storyWords:L.slice(0,5).map(function(x){return x.w;}), pron:L.slice(0,3).map(function(x){return x.w;}), pronI:0, pronScore:0, tries:0, storyDone:false }; wtMcq(); }
 function wtMcq(){ var q=WT.mcq[WT.mcqI]; var opts=[q.mean]; var others=wtShuffle(WT.pool.filter(function(x){ return x.mean && x.mean!==q.mean; }));
   for(var i=0;i<others.length && opts.length<4;i++){ if(opts.indexOf(others[i].mean)<0) opts.push(others[i].mean); } opts=wtShuffle(opts);
@@ -1270,18 +1270,19 @@ function wtNorm(s){ return String(s||'').toLowerCase().replace(/[^a-zçğıöş�
 async function wtPronCheck(){ var w=WT.pron[WT.pronI]; var btn=document.querySelector('.footer .primary'); var el=document.getElementById('sptr');
   if(btn){btn.disabled=true;btn.textContent='Dinleniyor…';}
   await finishRecording();
-  if(!(T&&T.speakBlob)){ if(el)el.textContent='Kaydı alamadım — mikrofona basıp tekrar söyle.'; if(btn){btn.disabled=false;btn.textContent='Kontrol et';} return; }
+  var MIN_AUDIO=1200; /* seviye testiyle aynı eşik: boş/çok kısa kayıt gönderilmez, sayaç da artmaz */
+  if(!(T&&T.speakBlob) || T.speakBlob.size<MIN_AUDIO){ if(el)el.textContent='Kaydı alamadım — mikrofona basıp kelimeyi net söyle.'; if(btn){btn.disabled=false;btn.textContent='Kontrol et';} return; }
   var transcript='';
   try{ var r=await KelimeAPI.gradeSpeakingAudio(T.speakBlob,(profile&&profile.level)||'A2'); transcript=(r&&r.transcript)||''; }catch(e){}
-  logDaily('konusma',1); if(btn){btn.disabled=false;btn.textContent='Kontrol et';}
+  logDaily('konusma',1); /* yalnızca geçerli (yeterli uzunlukta) kayıt gönderildiğinde say */ if(btn){btn.disabled=false;btn.textContent='Kontrol et';}
   var said=wtNorm(transcript), target=wtNorm(w);
-  var hit=said && (said===target || said.split(' ').indexOf(target)>=0 || (target.length>3 && said.indexOf(target)>=0));
+  var hit=!!said && (said===target || said.split(' ').indexOf(target)>=0); /* TAM kelime/ifade eşleşmesi — alt-dize değil (rain ≠ train) */
   if(hit){ WT.pronScore++; if(el)el.innerHTML='✓ Doğru: "'+esc(transcript||w)+'"'; setTimeout(wtPronNext,700); }
   else { WT.tries++; if(WT.tries>=2){ if(el)el.innerHTML='Bu kelimeyi geçiyoruz'+(transcript?(' (duyduğum: "'+esc(transcript)+'")'):'')+'.'; setTimeout(wtPronNext,900); } else { if(el)el.innerHTML='⚠️ Tam anlayamadım'+(transcript?(' (duyduğum: "'+esc(transcript)+'")'):'')+'. Tekrar dene.'; } } }
 function wtPronSkip(){ wtPronNext(); }
 function wtPronNext(){ WT.pronI++; WT.tries=0; if(WT.pronI<WT.pron.length) wtPron(); else wtFinish(); }
 function wtFinish(){ try{ profile.lastWeeklyTest=Date.now(); saveProfile(); }catch(e){} var hasAi=!!(WT&&WT.storyDone);
-  app.innerHTML='<div class="screen"><div class="hdr"><button class="back" onclick="scrDashboard()">‹ Panel</button><span class="phase">Haftalık test</span></div><div class="content" style="padding-top:8px"><div class="welcome"><h1>Tebrikler 🎉</h1><p>Haftalık testini tamamladın. Bir hafta sonra yenisi açılacak.</p></div>'
+  app.innerHTML='<div class="screen"><div class="hdr"><button class="back" onclick="scrDashboard()">‹ Panel</button><span class="phase">Haftalık test</span></div><div class="content" style="padding-top:8px"><div class="welcome"><h1>Tebrikler 🎉</h1><p>Haftalık testini tamamladın. Bir hafta sonra panelde yeni test rozeti çıkar; dilersen daha önce de çözebilirsin.</p></div>'
    +'<div class="statgrid" style="display:flex;gap:8px"><div class="stat" style="flex:1"><div class="n">'+WT.mcqScore+'/'+WT.mcq.length+'</div><div class="l">görsel doğru</div></div>'+(hasAi?('<div class="stat" style="flex:1"><div class="n">'+WT.pronScore+'/'+WT.pron.length+'</div><div class="l">telaffuz doğru</div></div>'):'')+'</div>'
    +(hasAi?'':'<div class="dlearn" style="margin-top:12px"><div style="color:var(--muted);font-size:13px">Yazma ve telaffuz bölümleri yapay zekâ izni ister; izin verince tam test açılır.</div></div>')
    +'<button class="primary" style="width:100%;margin-top:14px" onclick="scrDashboard()">Panele dön</button></div></div>'; }
@@ -1447,7 +1448,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s307</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s308</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>
@@ -2050,8 +2051,9 @@ function renderPhotoActions(){
   </div>`:'';
 }
 /* Yüklenen görseli (fotoğraf/belge) bellekten temizle — kullanıcı isteğiyle VEYA çalışma bitince. */
-function clearUpload(){ try{ PHOTO=null; }catch(e){} try{ IMPORT_IMG=null; }catch(e){}
+function clearUpload(){ try{ PHOTO=null; }catch(e){} try{ IMPORT_IMG=null; }catch(e){} try{ IMPORT_TEXT=''; }catch(e){} /* içe aktarılan BELGE metni de bellekten silinsin */
   var pv=document.getElementById('ppreview'); if(pv)pv.innerHTML=''; var a=document.getElementById('pactions'); if(a)a.innerHTML='';
+  try{ var it=document.getElementById('itext'); if(it)it.value=''; var ip=document.getElementById('ipreview'); if(ip)ip.innerHTML=''; }catch(e){} /* içe aktarma metin kutusu + önizleme */
   /* Dosya GİRİŞLERİNİ de sıfırla → aynı dosya tekrar seçilebilsin ve tarayıcıda dosya tutamacı kalmasın. */
   try{ ['pcam','pgal','ifile','ifilei'].forEach(function(id){ var el=document.getElementById(id); if(el){ try{ el.value=''; }catch(e){} } }); }catch(e){}
   /* Açık ekranda kalmış olabilecek görsel küçük resimlerini/önizlemelerini kaldır. */

@@ -529,13 +529,32 @@ function setAuthToken(t){ try{ if(t)localStorage.setItem(TKEY,t); else localStor
 /* ===== Yapay zekâ izni (OpenAI) — SUNUCUDAN okunur, varsayılan KAPALI =====
    İzin profile.aiConsent'te tutulur ve saveProfile ile sunucuya yazılır (istemci bayrağı tek başına yetmez; backend de kayıtlı profili okur).
    AI_ENFORCE: test aşamasında false (davranış değişmez). Kabul testinde/canlıda true yapılır ve backend ENFORCE_AI_CONSENT=1 ile eşleşir. */
-var AI_ENFORCE=false;
+var AI_ENFORCE=true; /* AÇIK: izin yoksa OpenAI uçlarına çağrı gitmez (backend ENFORCE_AI_CONSENT=1 ile eşleşmeli) */
 function aiAllowed(){ return !!(profile && profile.aiConsent===true); }
 function refreshAiGate(){ try{ if(window.KelimeAPI&&KelimeAPI.setAi) KelimeAPI.setAi({allowed:aiAllowed(), enforce:AI_ENFORCE}); }catch(e){} }
-function setAiConsent(v){ if(!profile) return; profile.aiConsent=!!v; saveProfile(); refreshAiGate(); if(typeof scrDashboard==='function' && document.querySelector('.dash')) scrDashboard(); }
+function setAiConsent(v){ if(!profile) return; profile.aiConsent=!!v; saveProfile(); syncPushNow(); /* izin değişikliği ANINDA sunucuya yazılır */ refreshAiGate(); if(typeof scrDashboard==='function' && document.querySelector('.dash')) scrDashboard(); }
+/* Yapay zekâ rıza istemi (yalnız zorlama açıkken). İzinliyse/zorlama kapalıysa doğrudan devam eder. */
+function aiConsentAsk(onGrant,onDecline){ if(!AI_ENFORCE || aiAllowed()){ if(onGrant)onGrant(); return; }
+  var ov=document.createElement('div'); ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
+  ov.innerHTML='<div style="background:#fff;border-radius:18px;max-width:340px;width:100%;padding:22px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
+    +'<div style="font-size:34px">🔒</div>'
+    +'<h3 style="margin:8px 0 6px;font-size:18px;color:#3a2e28">Yapay zekâ özellikleri</h3>'
+    +'<p style="font-size:12.5px;color:#6a5a52;line-height:1.55;margin:0 0 16px">Konuşma/yazma değerlendirme, sohbet, sesli anlatım ve fotoğraf analizi için; ses, metin ve fotoğrafların değerlendirme amacıyla yurt dışındaki hizmet sağlayıcıya (OpenAI) gönderilmesine izin veriyorum. Bu veriler <b>model eğitiminde kullanılmaz</b>. İzin vermezsem bu özellikler kapalı kalır; kelime, favori ve tekrar çalışmaya devam eder.</p>'
+    +'<button class="primary" style="width:100%" id="__aiYes">İzin ver</button>'
+    +'<button class="ghost" style="width:100%;margin-top:8px" id="__aiNo">Şimdi değil</button>'
+    +'<div style="font-size:11px;color:#9a8a82;margin-top:10px">İstediğin an panelden değiştirebilirsin.</div>'
+    +'</div>';
+  document.body.appendChild(ov);
+  ov.querySelector('#__aiYes').onclick=function(){ try{ setAiConsent(true); }catch(e){} try{ ov.remove(); }catch(e){} if(onGrant)onGrant(); };
+  ov.querySelector('#__aiNo').onclick=function(){ try{ ov.remove(); }catch(e){} if(onDecline)onDecline(); };
+}
+/* AI gerektiren bir eyleme girmeden önce izni güvence altına al. */
+function needAi(cb){ if(!AI_ENFORCE || aiAllowed()){ cb(); return; } aiConsentAsk(cb); }
 let _pushT=null;
 function syncPush(){ if(!API_BASE||!window.KelimeAPI||!getAuthToken()||!profile)return; if(_pushT)clearTimeout(_pushT);
   _pushT=setTimeout(function(){ try{ KelimeAPI.saveProfile(profile); }catch(e){} }, 800); }
+/* Geciktirmesiz yazım: izin değişikliği gibi kritik durumlarda ANINDA sunucuya gönder (sayfa hemen kapansa bile kaybolmasın). */
+function syncPushNow(){ if(!API_BASE||!window.KelimeAPI||!getAuthToken()||!profile)return; if(_pushT){ clearTimeout(_pushT); _pushT=null; } try{ KelimeAPI.saveProfile(profile); }catch(e){} }
 async function syncPull(){ if(!API_BASE||!window.KelimeAPI||!getAuthToken())return false;
   try{ const r=await KelimeAPI.getProfile();
     if(r&&r.user&&r.user.profile&&!r.offline&&!r.error){ const sp=r.user.profile;
@@ -817,7 +836,7 @@ async function doRegister(){ const name=(document.getElementById('rname').value|
     }catch(e){}
     if(btn){btn.disabled=false;btn.textContent='Devam → seviye testi';}
   }
-  saveProfile(); scrLevelTest(); }
+  saveProfile(); aiConsentAsk(function(){ scrLevelTest(); }); } /* kayıttan sonra rıza istemi, sonra seviye testi */
 
 /* ---- SEVİYE TESTİ (Oxford/IELTS tarzı Use-of-English yerleştirme) ---- */
 const ORD=['A1','A2','B1','B2','C1','C2'];
@@ -1341,7 +1360,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s301</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s303</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>
@@ -1896,7 +1915,9 @@ function chatLocalReply(text){
     if(next) setTimeout(function(){ if(document.getElementById('cchat')) cbot("Can you make a sentence with *"+next+"*?"); }, 950);
   }, 500);
 }
-function cfinish(){ chatEnded=true; chatBusy=false; try{ PHOTO=null; }catch(e){} /* sohbet bitti → yüklenen görsel bellekten kaldırılır */ try{ var _cc=document.querySelector('.ccomp'); if(_cc)_cc.style.display='none'; }catch(e){} /* "Bitir" sonrası giriş kapalı */
+function cfinish(){ chatEnded=true; chatBusy=false; try{ PHOTO=null; }catch(e){} /* sohbet bitti → yüklenen görsel bellekten kaldırılır */
+  try{ document.querySelectorAll('.photothumb, .photoprev').forEach(function(el){ el.remove(); }); }catch(e){} /* küçük resim de ekrandan kaldırılır */
+  try{ var _cc=document.querySelector('.ccomp'); if(_cc)_cc.style.display='none'; }catch(e){} /* "Bitir" sonrası giriş kapalı */
   ctyping(true); setTimeout(function(){ ctyping(false);
   const fixes=chatFixes.length?chatFixes.map(function(f){return '• '+f;}).join('\n'):'✓ Belirgin bir hata yoktu, çok iyi!';
   if(chatMode==='photo'){
@@ -1942,10 +1963,15 @@ function renderPhotoActions(){
   </div>`:'';
 }
 /* Yüklenen görseli (fotoğraf/belge) bellekten temizle — kullanıcı isteğiyle VEYA çalışma bitince. */
-function clearUpload(){ try{ PHOTO=null; }catch(e){} try{ IMPORT_IMG=null; }catch(e){} var pv=document.getElementById('ppreview'); if(pv)pv.innerHTML=''; var a=document.getElementById('pactions'); if(a)a.innerHTML=''; }
-function photoTalk(){ if(!PHOTO)return; gateStart(function(){ scrChat({photo:PHOTO}); }); }
-function photoWrite(){ if(!PHOTO)return; gateStart(scrPhotoWrite); }
-function photoExtract(){ if(!PHOTO)return; IMPORT_IMG=PHOTO; IMPORT_TEXT=''; IMPORT_SRC='photo'; doExtract(); }
+function clearUpload(){ try{ PHOTO=null; }catch(e){} try{ IMPORT_IMG=null; }catch(e){}
+  var pv=document.getElementById('ppreview'); if(pv)pv.innerHTML=''; var a=document.getElementById('pactions'); if(a)a.innerHTML='';
+  /* Dosya GİRİŞLERİNİ de sıfırla → aynı dosya tekrar seçilebilsin ve tarayıcıda dosya tutamacı kalmasın. */
+  try{ ['pcam','pgal','ifile','ifilei'].forEach(function(id){ var el=document.getElementById(id); if(el){ try{ el.value=''; }catch(e){} } }); }catch(e){}
+  /* Açık ekranda kalmış olabilecek görsel küçük resimlerini/önizlemelerini kaldır. */
+  try{ document.querySelectorAll('.photothumb, .photoprev').forEach(function(el){ el.remove(); }); }catch(e){} }
+function photoTalk(){ if(!PHOTO)return; needAi(function(){ gateStart(function(){ scrChat({photo:PHOTO}); }); }); }
+function photoWrite(){ if(!PHOTO)return; needAi(function(){ gateStart(scrPhotoWrite); }); }
+function photoExtract(){ if(!PHOTO)return; needAi(function(){ IMPORT_IMG=PHOTO; IMPORT_TEXT=''; IMPORT_SRC='photo'; doExtract(); }); }
 function scrPhotoWrite(){ stopAll();
   app.innerHTML=`<div class="screen">
     <div class="hdr"><button class="back" onclick="scrPhoto()">‹ Geri</button><span class="phase">Görsel · Yazma</span></div>
@@ -2159,7 +2185,7 @@ function prepImportImages(){ var words=(IMPORT_WORDS||[]).slice(); if(!words.len
       ensureImage(d).then(function(r){ if(r==='made')made++; done++; active--; upd(); if(done>=total){ if(bar)bar.textContent='✓ Görseller hazır'+(made?(' ('+made+' yeni üretildi)'):''); if(btn){btn.textContent='✓ Hazır';} } else pump(); }); } }
   pump(); }
 function learnImported(){ if(!IMPORT_WORDS||!IMPORT_WORDS.length)return; const t=upsertCustomTopic(IMPORT_WORDS); gateStart(function(){ startTopic(t); }); }
-function talkWithImported(){ if(!IMPORT_WORDS||!IMPORT_WORDS.length)return; chatSeedWords=IMPORT_WORDS.map(function(d){return d.w;}); gateStart(function(){ scrChat(); }); }
+function talkWithImported(){ if(!IMPORT_WORDS||!IMPORT_WORDS.length)return; needAi(function(){ chatSeedWords=IMPORT_WORDS.map(function(d){return d.w;}); gateStart(function(){ scrChat(); }); }); }
 function writeWithImported(){ if(!IMPORT_WORDS||!IMPORT_WORDS.length)return; WW=IMPORT_WORDS.slice(); gateStart(scrWriteWords); }
 let WW=[];
 function scrWriteWords(){ stopAll();

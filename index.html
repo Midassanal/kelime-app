@@ -1141,7 +1141,7 @@ function scrLevelResult(){ const l=profile.level;
 }
 
 /* ---- PANEL ---- */
-function scrDashboard(){ stopAll(); if(!profileValid())return scrRegister(); /* boş/bozuk profil ({} veya eksik ad/tarih) → kayıt akışı */
+function scrDashboard(){ stopAll(); try{ PHOTO=null; IMPORT_IMG=null; }catch(e){} /* ana ekrana dönüldü → yükleme temizlenir */ if(!profileValid())return scrRegister(); /* boş/bozuk profil ({} veya eksik ad/tarih) → kayıt akışı */
   const dn=dayNumber(); const locked=trialLocked();
   const tids=Object.keys(profile.studied||{}).filter(k=>profile.studied[k].length);
   const total=tids.reduce((a,k)=>a+profile.studied[k].length,0);
@@ -1259,7 +1259,7 @@ function scrTopics(){ stopAll(); currentTopic=null;
   </div>`;
 }
 function pickTopic(i){ const t=TOPICS[i]; gateStart(()=>startTopic(t)); }
-function scrToday(mode){ stopAll(); if(!profile)return scrWelcome();
+function scrToday(mode){ stopAll(); try{ PHOTO=null; IMPORT_IMG=null; }catch(e){} /* fotoğraf akışından çıkıldı → yükleme temizlenir */ if(!profile)return scrWelcome();
   const isNew=mode==='new';
   const last=profile.lastTopicId?TOPICS.find(t=>t.id===profile.lastTopicId):null;
   app.innerHTML=`<div class="screen">
@@ -1341,7 +1341,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s300</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s301</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>
@@ -1896,7 +1896,7 @@ function chatLocalReply(text){
     if(next) setTimeout(function(){ if(document.getElementById('cchat')) cbot("Can you make a sentence with *"+next+"*?"); }, 950);
   }, 500);
 }
-function cfinish(){ chatEnded=true; chatBusy=false; try{ var _cc=document.querySelector('.ccomp'); if(_cc)_cc.style.display='none'; }catch(e){} /* "Bitir" sonrası giriş kapalı */
+function cfinish(){ chatEnded=true; chatBusy=false; try{ PHOTO=null; }catch(e){} /* sohbet bitti → yüklenen görsel bellekten kaldırılır */ try{ var _cc=document.querySelector('.ccomp'); if(_cc)_cc.style.display='none'; }catch(e){} /* "Bitir" sonrası giriş kapalı */
   ctyping(true); setTimeout(function(){ ctyping(false);
   const fixes=chatFixes.length?chatFixes.map(function(f){return '• '+f;}).join('\n'):'✓ Belirgin bir hata yoktu, çok iyi!';
   if(chatMode==='photo'){
@@ -1934,11 +1934,15 @@ function renderPhotoActions(){
   const pv=document.getElementById('ppreview'); if(pv)pv.innerHTML=PHOTO?`<img class="photoprev" src="${PHOTO}" alt="seçilen fotoğraf">`:'';
   const a=document.getElementById('pactions'); if(!a)return;
   a.innerHTML=PHOTO?`<div style="margin-top:14px">
+    <div style="font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:10px">📎 Yüklediğin fotoğraf yalnızca bu çalışma için geçici olarak kullanılır ve çalışma bitince kaldırılır. İstediğin an aşağıdan kaldırabilirsin.</div>
     <button class="primary" style="width:100%" onclick="photoExtract()">✨ Bu fotoğraftan 15 kelime çıkar</button>
     <button class="opt" style="width:100%;margin-top:10px;border-color:#e3b3a6" onclick="photoTalk()">🗣️ Bu görsel üzerinden konuşalım</button>
     <button class="opt" style="width:100%;margin-top:10px" onclick="photoWrite()">✍️ Yazmaya başla</button>
+    <button class="opt" style="width:100%;margin-top:10px;color:#c9503c;border-color:#e9c4bb" onclick="clearUpload()">🗑️ Yüklemeyi kaldır</button>
   </div>`:'';
 }
+/* Yüklenen görseli (fotoğraf/belge) bellekten temizle — kullanıcı isteğiyle VEYA çalışma bitince. */
+function clearUpload(){ try{ PHOTO=null; }catch(e){} try{ IMPORT_IMG=null; }catch(e){} var pv=document.getElementById('ppreview'); if(pv)pv.innerHTML=''; var a=document.getElementById('pactions'); if(a)a.innerHTML=''; }
 function photoTalk(){ if(!PHOTO)return; gateStart(function(){ scrChat({photo:PHOTO}); }); }
 function photoWrite(){ if(!PHOTO)return; gateStart(scrPhotoWrite); }
 function photoExtract(){ if(!PHOTO)return; IMPORT_IMG=PHOTO; IMPORT_TEXT=''; IMPORT_SRC='photo'; doExtract(); }

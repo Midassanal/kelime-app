@@ -588,7 +588,7 @@ function srsAnswer(w,correct){ if(!profile)return; var m=srsMap(); var k=String(
 
 /* ---- KARŞILAMA ---- */
 /* ==== Sesli karşılama (Aiko) ==== */
-let __ttsVoice=null,__greetText='',__greetSpoke=false,__greetPrimed=false;
+let __ttsVoice=null,__greetText='',__greetScreen='',__greetSpoke=false,__greetPrimed=false;
 /* Seçili avatarın OpenAI sesi (kadın/erkek + her biri farklı) ve cinsiyeti */
 function avatarVoice(){ var id=curAvatarId(); var m={f1:'coral',f2:'shimmer',f3:'sage',m1:'verse',m2:'ballad',m3:'ash'}; return m[id]||'coral'; }
 /* ===== Konuşma hızı (kullanıcı ayarı) ve avatar ses dengesi ===== */
@@ -680,7 +680,11 @@ function playAudioUrl(url){ try{
   }catch(e){ speakGreet(); return false; } }
 function playGreet(){ const cached=getCachedTTS(__greetText,avatarVoice()); if(cached){ playAudioUrl(cached); return; }
   fetchGreetTTS(__greetText).then(function(url){ if(url) playAudioUrl(url); else speakGreet(); }); }
-function greetWelcome(has){ __greetText=greetText(has); const t=document.getElementById('wgTxt'); if(t)t.textContent=__greetText; __greetSpoke=false;
+/* GİZLİLİK: Karşılama SESİ (OpenAI TTS'e gider) kullanıcı adını İÇERMEZ — ad yalnızca EKRANDA gösterilir.
+   Böylece kullanıcı hiçbir içerik paylaşmadan, açılışta adı ses sağlayıcısına gönderilmez. */
+function greetVoiceText(has){ if(has) return 'Merhaba, hoş geldin! Bugün de çalışmaya hazır mısın? Güzel ve eğlenceli bir derse başlayalım mı?';
+  return 'Merhaba, hoş geldin. Yeni ve eğlenceli bir yola hazır mısın? Hem öğreneceğiz, hem konuşacağız, hem de eğleneceğiz. Hadi, şimdi önce testi yap ve sonra beraber planımızı yapalım.'; }
+function greetWelcome(has){ __greetScreen=greetText(has); __greetText=greetVoiceText(has); const t=document.getElementById('wgTxt'); if(t)t.textContent=__greetScreen; __greetSpoke=false;
   fetchGreetTTS(__greetText); /* arka planda hazırla (önbellek), avatara dokununca anında çalsın */
   if(window.__greetNow){ window.__greetNow=false; playGreet(); } /* avatar yeni seçildiyse hemen selam ver */ }
 function replayGreet(){ __greetSpoke=false; if(__greetAudioEl){try{__greetAudioEl.pause();__greetAudioEl.currentTime=0;}catch(e){}} playGreet(); }
@@ -778,11 +782,10 @@ function scrRegister(){ stopAll();
     <div class="hdr"><button class="back" onclick="scrWelcome()">‹ Geri</button><span class="phase">Kayıt</span></div>
     <div class="content" style="display:flex;flex-direction:column;justify-content:safe center;padding-top:16px;padding-bottom:16px">
       <h1 style="font-size:24px;margin:0 0 4px;text-align:center">Tanışalım 🌿</h1>
-      <p style="color:var(--muted);font-size:13px;text-align:center;margin:0 0 20px">Sadece adın ve yaşın yeterli.</p>
+      <p style="color:var(--muted);font-size:13px;text-align:center;margin:0 0 20px">Sana nasıl hitap edelim ve ilerlemen kayıtlı kalsın — bir takma ad ve e-posta yeterli.</p>
       <div class="form">
-        <div class="field"><label>Adın</label><input id="rname" type="text" placeholder="ör. Ayşe" autocomplete="off"></div>
-        <div class="field"><label>Yaşın</label><input id="rage" type="number" inputmode="numeric" placeholder="ör. 28"></div>
-        ${(API_BASE)?`<div class="field"><label>E-posta <span style="color:var(--muted);font-weight:400">· cihazlar arası (isteğe bağlı)</span></label><input id="remail" type="email" placeholder="ilerlemen kaybolmasın" autocomplete="off"></div>
+        <div class="field"><label>Takma ad <span style="color:var(--muted);font-weight:400">· isteğe bağlı</span></label><input id="rname" type="text" placeholder="sana nasıl hitap edelim?" autocomplete="off"></div>
+        ${(API_BASE)?`<div class="field"><label>E-posta <span style="color:var(--muted);font-weight:400">· gerekli · gelişimin cihazlar arası kayıtlı kalsın</span></label><input id="remail" type="email" placeholder="ornek@mail.com" autocomplete="off" inputmode="email"></div>
         <div class="field"><label>Şifre <span style="color:var(--muted);font-weight:400">· isteğe bağlı</span></label><input id="rpass" type="password" placeholder="en az 4 karakter"></div>`:''}
       </div>
       <div class="subnote" id="rnote"></div>
@@ -790,20 +793,24 @@ function scrRegister(){ stopAll();
     <div class="footer"><button class="primary" onclick="doRegister()">Devam → seviye testi</button></div>
   </div>`;
 }
-async function doRegister(){ const name=(document.getElementById('rname').value||'').trim()||'Öğrenci'; const age=(document.getElementById('rage').value||'').trim();
+async function doRegister(){ const name=(document.getElementById('rname').value||'').trim()||'Öğrenci';
   const emEl=document.getElementById('remail'), pwEl=document.getElementById('rpass');
   const email=emEl?(emEl.value||'').trim():'', password=pwEl?(pwEl.value||'').trim():'';
   const note=document.getElementById('rnote'), btn=document.querySelector('.footer .primary');
-  profile={name,age,joinDate:new Date().toISOString(),level:null,studied:{},known:{},lastTopicId:null,daysActive:[],subscribed:false,devOffset:0,levelStartCount:0,avatarId:(window.__pendingAvatar||''),aiConsent:false,updatedAt:Date.now()};
+  if(API_BASE){ /* E-POSTA ZORUNLU: hesap erişimi + cihazlar arası ilerleme + abonelik eşleştirmesi */
+    if(!email){ if(note)note.textContent='Devam etmek için e-posta gerekli.'; return; }
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ if(note)note.textContent='Geçerli bir e-posta adresi gir.'; return; }
+  }
+  profile={name,joinDate:new Date().toISOString(),level:null,studied:{},known:{},lastTopicId:null,daysActive:[],subscribed:false,devOffset:0,levelStartCount:0,avatarId:(window.__pendingAvatar||''),aiConsent:false,updatedAt:Date.now()};
   refreshAiGate(); /* yeni hesap: izin varsayılan KAPALI */
   if(API_BASE && window.KelimeAPI){
     if(btn){btn.disabled=true;btn.textContent='Kaydediliyor…';}
     try{
       var r;
       if(getAuthToken() && KelimeAPI.upgrade){ // anonim hesabı yükselt (token korunur)
-        r=await KelimeAPI.upgrade(name, age, {email:email||undefined, password:password||undefined, profile});
+        r=await KelimeAPI.upgrade(name, null, {email:email||undefined, password:password||undefined, profile});
       } else {
-        r=await KelimeAPI.register(name, age, {email:email||undefined, password:password||undefined, profile});
+        r=await KelimeAPI.register(name, null, {email:email||undefined, password:password||undefined, profile});
         if(r&&r.token) setAuthToken(r.token);
       }
       if(r&&r.error&&!r.offline){ if(note)note.textContent=r.error; if(btn){btn.disabled=false;btn.textContent='Devam → seviye testi';} return; }
@@ -1334,7 +1341,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s299</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s300</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>

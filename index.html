@@ -1178,7 +1178,7 @@ function scrLevelResult(){ const l=profile.level;
 }
 
 /* ---- PANEL ---- */
-function scrDashboard(){ stopAll(); try{ PHOTO=null; IMPORT_IMG=null; }catch(e){} /* ana ekrana dönüldü → yükleme temizlenir */ if(!profileValid())return scrRegister(); /* boş/bozuk profil ({} veya eksik ad/tarih) → kayıt akışı */
+function scrDashboard(){ stopAll(); try{ clearUpload(); }catch(e){} /* ana ekrana (Panel) dönüldü → yüklenen foto/görsel VE içe aktarılan BELGE metni (IMPORT_TEXT) bellekten temizlenir */ if(!profileValid())return scrRegister(); /* boş/bozuk profil ({} veya eksik ad/tarih) → kayıt akışı */
   const dn=dayNumber(); const locked=trialLocked();
   const tids=Object.keys(profile.studied||{}).filter(k=>profile.studied[k].length);
   const total=tids.reduce((a,k)=>a+profile.studied[k].length,0);
@@ -1366,7 +1366,7 @@ function scrTopics(){ stopAll(); currentTopic=null;
   </div>`;
 }
 function pickTopic(i){ const t=TOPICS[i]; gateStart(()=>startTopic(t)); }
-function scrToday(mode){ stopAll(); try{ PHOTO=null; IMPORT_IMG=null; }catch(e){} /* fotoğraf akışından çıkıldı → yükleme temizlenir */ if(!profile)return scrWelcome();
+function scrToday(mode){ stopAll(); try{ clearUpload(); }catch(e){} /* ana ekrana (Bugün) dönüş → yüklenen foto/görsel VE içe aktarılan BELGE metni (IMPORT_TEXT) bellekten temizlenir */ if(!profile)return scrWelcome();
   const isNew=mode==='new';
   const last=profile.lastTopicId?TOPICS.find(t=>t.id===profile.lastTopicId):null;
   app.innerHTML=`<div class="screen">
@@ -1448,7 +1448,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s308</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s309</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>

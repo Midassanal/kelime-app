@@ -529,7 +529,7 @@ function tutorIsPlaying(){ try{ return !!(__tutorAudio && !__tutorAudio.paused &
 function tutorPauseResume(){ try{ var a=__tutorAudio; if(!a||!a.src)return 'none'; if(!a.paused){ a.pause(); return 'paused'; } var p=a.play(); if(p&&p.catch)p.catch(function(){}); return 'playing'; }catch(e){ return 'none'; } }
 function say(t,hyp){ var ctl={onend:null,onboundary:null}; tutorSpeak(t,function(){ if(typeof ctl.onend==='function')ctl.onend(); }); return ctl; }
 var __chatMicStop=null; /* aktif sohbet mikrofon kaydını durduran kanca (scrChat kurar) — ekrandan çıkışta stopAll çağırır */
-function stopAll(){try{__ttsSeq++;}catch(e){} try{speechSynthesis.cancel();}catch(e){} try{elifAudio.pause();}catch(e){} try{if(__tutorAudio)__tutorAudio.pause();}catch(e){} try{ if(typeof __chatMicStop==='function') __chatMicStop(); }catch(e){}}
+function stopAll(){try{__ttsSeq++;}catch(e){} try{speechSynthesis.cancel();}catch(e){} try{elifAudio.pause();}catch(e){} try{if(__tutorAudio)__tutorAudio.pause();}catch(e){} try{if(typeof __greetAudioEl!=='undefined'&&__greetAudioEl)__greetAudioEl.pause();}catch(e){} /* karşılama sesini de durdur → önizleme/ders sesiyle ÜST ÜSTE binmesin */ try{ if(typeof __chatMicStop==='function') __chatMicStop(); }catch(e){}}
 const SPKICON=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 6a8 8 0 0 1 0 12"/></svg>`;
 
 /* ================= PROFİL & İLERLEME ================= */
@@ -812,7 +812,7 @@ function previewAvatar(id){
   var a=(AVATARS.filter(function(x){return x.id===id;})[0])||{}; var nm=a.label||'';
   try{ var c=document.getElementById('avContinue'); if(c){ c.style.display=''; c.textContent=(nm||'Bu avatar')+' ile devam et →'; } }catch(e){}
   try{ stopAll(); }catch(e){}
-  try{ tutorSpeak("Hi, I'm "+nm+". Let's learn English together!"); }catch(e){} /* izin kapalıysa tutorSpeak ipucu gösterir */
+  try{ tutorSpeak("Merhaba! Ben "+nm+". Hadi birlikte İngilizce öğrenelim."); }catch(e){} /* tanışma örneği Türkçe; izin kapalıysa tutorSpeak ipucu gösterir */
 }
 /* Onayla → ana sayfaya geç (karşılama bu avatarla). */
 function commitAvatar(){ var id=window.__pendingAvatar||curAvatarId(); if(!id)return; chooseAvatar(id); }
@@ -1545,7 +1545,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s314</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s315</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>

@@ -717,7 +717,7 @@ function pickTRVoice(male){ try{ const vs=(window.speechSynthesis&&speechSynthes
     else { if(/yelda|filiz|seda|elif|aylin|kad|female|woman/.test(n))s+=4; } return s; };
   return tr.slice().sort(function(a,b){return score(b)-score(a);})[0]; }catch(e){return null;} }
 (function(){ if(!('speechSynthesis'in window))return; try{__ttsVoice=pickTRVoice();}catch(e){} try{speechSynthesis.onvoiceschanged=function(){__ttsVoice=pickTRVoice();};}catch(e){} })();
-function speakGreet(){ if(typeof AI_ENFORCE!=='undefined' && AI_ENFORCE && !aiAllowed()){ try{ avatarVoiceHint(); }catch(e){} return; } /* izin kapalı → karşılamada tarayıcı sesine düşme */
+function speakGreet(){ if(!document.getElementById('wgTxt')) return; /* yalnız karşılama ekranında */ if(typeof AI_ENFORCE!=='undefined' && AI_ENFORCE && !aiAllowed()){ try{ avatarVoiceHint(); }catch(e){} return; } /* izin kapalı → karşılamada tarayıcı sesine düşme */
   try{ if(!('speechSynthesis'in window)||!__greetText)return; speechSynthesis.cancel();
   var male=avatarGender()==='m'; const v=pickTRVoice(male)||__ttsVoice; const parts=(__greetText.match(/[^.!?]+[.!?]*/g)||[__greetText]).map(function(x){return x.trim();}).filter(Boolean);
   parts.forEach(function(p,i){ const u=new SpeechSynthesisUtterance(p); if(v){u.voice=v;u.lang=v.lang;}else u.lang='tr-TR'; u.rate=Math.max(0.5,Math.min(1.5,1.02*userSpeed()));u.pitch=male?0.86:1.16;u.volume=1; if(i===0)u.onstart=function(){__greetSpoke=true;}; speechSynthesis.speak(u); }); }catch(e){} }
@@ -737,7 +737,8 @@ async function fetchGreetTTS(text){ var voice=avatarVoice();
   }catch(e){}
   return null;
 }
-function playAudioUrl(url){ try{
+function playAudioUrl(url){ if(!document.getElementById('wgTxt')) return false; /* YALNIZ karşılama ekranındayken çal → geç gelen async karşılama, login/kayıt ekranına sızmasın */
+  try{
     if(!__greetAudioEl){ __greetAudioEl=new Audio(); try{__greetAudioEl.setAttribute('playsinline','');}catch(e){} }
     var g=__greetAudioEl; try{ g.pause(); g.currentTime=0; }catch(e){}
     try{ g.playbackRate=userSpeed(); g.preservesPitch=true; g.mozPreservesPitch=true; g.webkitPreservesPitch=true; }catch(e){}
@@ -1545,7 +1546,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s315</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s316</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>

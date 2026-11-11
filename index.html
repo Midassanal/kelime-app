@@ -796,12 +796,26 @@ function scrAvatars(){ stopAll(); var cur=curAvatarId();
   app.innerHTML='<div class="screen">'
    +'<div class="hdr"><button class="back" onclick="scrWelcome()">‹ Geri</button><span class="phase">Avatarını seç</span></div>'
    +'<div class="content"><div class="welcome" style="margin-bottom:6px"><h1 style="font-size:22px">Avatarını seç 🌸</h1><p>Sana birebir eşlik edecek avatarını seç. Her açtığında seninle o ilerler; adını ve sesini kullanır. İstediğin zaman değiştirebilirsin.</p></div>'
-   +'<div class="avgrid">'+AVATARS.map(function(a){ return '<button class="avopt'+(a.id===cur?' sel':'')+'" onclick="chooseAvatar(\''+a.id+'\')"><img src="'+avatarURL(a.id)+'" alt="" loading="lazy" onerror="this.style.opacity=.3"><span>'+a.label+'</span></button>'; }).join('')+'</div>'
+   +'<div class="avgrid">'+AVATARS.map(function(a){ return '<button class="avopt'+(a.id===cur?' sel':'')+'" data-av="'+a.id+'" onclick="previewAvatar(\''+a.id+'\')"><img src="'+avatarURL(a.id)+'" alt="" loading="lazy" onerror="this.style.opacity=.3"><span>'+a.label+'</span></button>'; }).join('')+'</div>'
+   +'<div style="text-align:center;font-size:12px;color:var(--muted);margin-top:8px">🔊 Dinlemek için bir avatara dokun; beğendiğinle alttan devam et.</div>'
+   +'<div style="text-align:center;margin-top:12px"><button id="avContinue" class="primary" style="width:100%;'+(cur?'':'display:none')+'" onclick="commitAvatar()">'+(cur?(esc(((AVATARS.filter(function(x){return x.id===cur;})[0])||{}).label||'Bu avatar')+' ile devam et →'):'Devam et →')+'</button></div>'
    +'<div class="spdwrap" style="margin-top:20px;text-align:center"><div style="font-size:13px;color:var(--muted);margin-bottom:8px">🏃 Konuşma hızı</div>'
    +'<div class="spdsel" style="display:inline-flex;gap:8px">'+[['0.8','Yavaş'],['1','Normal'],['1.15','Hızlı']].map(function(o){ var on=(Math.abs(userSpeed()-parseFloat(o[0]))<0.03); return '<button onclick="setSpeed('+o[0]+')" style="padding:8px 14px;border-radius:12px;border:1px solid '+(on?'var(--rose)':'var(--line)')+';background:'+(on?'var(--rose-bg)':'#fff')+';color:var(--ink);font-size:13px;font-weight:'+(on?'800':'500')+';cursor:pointer;line-height:1.3">'+o[1]+'<br><small style="color:var(--muted)">'+o[0]+'×</small></button>'; }).join('')+'</div>'
    +'<div style="font-size:11px;color:var(--muted);margin-top:8px">Ders ve sohbet bu hızla dinlenir · istediğin an değiştir.</div></div>'
    +'</div></div>';
 }
+/* Avatar ÖNİZLEME: seçeneği işaretle + o avatarın sesiyle kısa örnek çal; SAYFA DEĞİŞMEZ. Kullanıcı dinleyip karar verir. */
+function previewAvatar(id){
+  try{ localStorage.setItem('parlo_av',id); }catch(e){} window.__pendingAvatar=id;
+  if(profile){ profile.avatarId=id; saveProfile(); } /* ses/karşılama bu avatarı kullansın */
+  try{ document.querySelectorAll('.avopt').forEach(function(el){ el.classList.remove('sel'); }); var b=document.querySelector('.avopt[data-av="'+id+'"]'); if(b)b.classList.add('sel'); }catch(e){}
+  var a=(AVATARS.filter(function(x){return x.id===id;})[0])||{}; var nm=a.label||'';
+  try{ var c=document.getElementById('avContinue'); if(c){ c.style.display=''; c.textContent=(nm||'Bu avatar')+' ile devam et →'; } }catch(e){}
+  try{ stopAll(); }catch(e){}
+  try{ tutorSpeak("Hi, I'm "+nm+". Let's learn English together!"); }catch(e){} /* izin kapalıysa tutorSpeak ipucu gösterir */
+}
+/* Onayla → ana sayfaya geç (karşılama bu avatarla). */
+function commitAvatar(){ var id=window.__pendingAvatar||curAvatarId(); if(!id)return; chooseAvatar(id); }
 function chooseAvatar(id){ try{ localStorage.setItem('parlo_av',id); }catch(e){} window.__pendingAvatar=id; if(profile){ profile.avatarId=id; saveProfile(); } window.__greetNow=true; scrWelcome(); }
 /* ---- GİRİŞ (başka cihaz / mevcut hesap) ---- */
 function scrLogin(){ stopAll();
@@ -1531,7 +1545,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s313</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s314</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>
@@ -2432,7 +2446,7 @@ function attachSwipe(card,onLeft,onRight){
 }
 
 Object.assign(window,{scrTopics,pickTopic,startSelect,selDecide,toggleHide,toggleSave,cardGo,setMode,toggleNormal,toggleElif,openSheet,closeSheet,sheetSave,say,scrProduce,p1skip,p1next,bankTap,produceS1,produceS2,produceS3,scrDone,
-  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,scrProgress,scrWeekly,wtBegin,wtMcqAns,wtStory,wtGradeStory,wtPron,wtPronCheck,wtPronSkip,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar,cancelSub,chatPlayPause,avatarTap});
+  scrWelcome,scrRegister,doRegister,scrLevelTest,scrTestIntro,renderGram,answerGram,renderRead,answerRead,renderListen,answerListen,playListen,saySpeakPrompt,scrWriting,submitWriting,scrSpeaking,speakRec,finishSpeak,scrToday,scrDashboard,scrProgress,scrWeekly,wtBegin,wtMcqAns,wtStory,wtGradeStory,wtPron,wtPronCheck,wtPronSkip,continueTopic,devDay,devReset,scrPaywall,subscribeNow,gateStart,startTopic,existingTap,newUser,scrLogin,doLogin,boot,retakeTest,scrLevelResult,scrChat,chatUser,scrPhoto,onPhoto,photoTalk,photoWrite,photoExtract,scrPhotoWrite,submitPhotoWrite,scrImport,onImport,importTextChanged,doExtract,scrVisionInfo,scrImportResult,learnImported,talkWithImported,writeWithImported,scrWriteWords,submitWriteWords,scrReview,revAnswer,revReveal,prepImportImages,skipPrep,scrAvatars,chooseAvatar,previewAvatar,commitAvatar,cancelSub,chatPlayPause,avatarTap});
 boot();
 /* Uygulama öne geldiğinde izni (ve profili) yeniden senkronla: başka sekmede/cihazda verilen izin bu oturuma da yansısın → avatar sesi "açtım ama değişmedi" sorunu olmasın. */
 try{ document.addEventListener('visibilitychange', function(){ if(!document.hidden && API_BASE && window.KelimeAPI && getAuthToken()){ try{ syncPull().then(function(){ try{ refreshAiGate(); }catch(e){} }); }catch(e){} } }); }catch(e){}

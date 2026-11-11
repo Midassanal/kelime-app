@@ -496,7 +496,20 @@ function browserSay(t,done){ try{ if(typeof speechSynthesis==='undefined'){ if(d
   if(localOnly && !voice){ if(done)done(); return; } /* yerel sesli okuma yok → ses sunulmaz, yazılı akışla devam */
   speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(String(t)); u.lang='en-US'; if(voice)u.voice=voice; u.rate=Math.max(0.5,Math.min(1.5,0.95*userSpeed())); u.pitch=1; u.onend=function(){ if(done)done(); }; try{speechSynthesis.resume();}catch(_){} setTimeout(function(){try{speechSynthesis.speak(u);}catch(e){}},40);}catch(e){ if(done)done(); } }
 var __ttsSeq=0;
+var __voiceHintAt=0;
+/* İzin kapalıyken avatar sesi (OpenAI) üretilemez. Uyumsuz tarayıcı sesine düşmek yerine throttle'lı küçük bir ipucu göster. */
+function avatarVoiceHint(){ try{ var now=Date.now(); if(now-__voiceHintAt<45000) return; __voiceHintAt=now;
+  var old=document.getElementById('__vhint'); if(old)old.remove();
+  var d=document.createElement('div'); d.id='__vhint';
+  d.style.cssText='position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99990;background:#4a3f39;color:#fff;padding:10px 12px;border-radius:12px;font-size:12.5px;max-width:320px;width:calc(100% - 32px);box-sizing:border-box;box-shadow:0 8px 24px rgba(0,0,0,.28);display:flex;gap:10px;align-items:center;justify-content:space-between';
+  var s=document.createElement('span'); s.textContent='🔊 Avatarın gerçek sesi için yapay zekâ iznini aç';
+  var b=document.createElement('button'); b.textContent='İzin ver'; b.style.cssText='background:#ff7e9d;color:#fff;border:none;border-radius:9px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;flex:none';
+  b.onclick=function(){ try{ d.remove(); }catch(e){} try{ if(typeof aiConsentAsk==='function') aiConsentAsk(function(){ try{ if(typeof replayGreet==='function' && document.getElementById('wgTxt')) replayGreet(); }catch(e){} }, function(){}); else if(typeof setAiConsent==='function') setAiConsent(true); }catch(e){} };
+  d.appendChild(s); d.appendChild(b); document.body.appendChild(d);
+  setTimeout(function(){ try{ if(d&&d.parentNode)d.remove(); }catch(e){} }, 6000);
+}catch(e){} }
 function tutorSpeak(text,done){ text=String(text==null?'':text); if(!text.trim()){ if(done)done(); return; }
+  if(typeof AI_ENFORCE!=='undefined' && AI_ENFORCE && !aiAllowed()){ try{ avatarVoiceHint(); }catch(e){} if(done)done(); return; } /* izin kapalı → uyumsuz tarayıcı sesine DÜŞME, ipucu göster */
   var myseq=++__ttsSeq; /* en son istenen seslendirme kazanır; geciken eski yanıt oynatıcıyı devralmasın */
   var voice=(typeof avatarVoice==='function')?avatarVoice():'nova'; var key=voice+'|'+text;
   function stale(){ return myseq!==__ttsSeq; } /* ekran değişti / yeni seslendirme istendi → bu geciken yanıt geçersiz */
@@ -704,7 +717,8 @@ function pickTRVoice(male){ try{ const vs=(window.speechSynthesis&&speechSynthes
     else { if(/yelda|filiz|seda|elif|aylin|kad|female|woman/.test(n))s+=4; } return s; };
   return tr.slice().sort(function(a,b){return score(b)-score(a);})[0]; }catch(e){return null;} }
 (function(){ if(!('speechSynthesis'in window))return; try{__ttsVoice=pickTRVoice();}catch(e){} try{speechSynthesis.onvoiceschanged=function(){__ttsVoice=pickTRVoice();};}catch(e){} })();
-function speakGreet(){ try{ if(!('speechSynthesis'in window)||!__greetText)return; speechSynthesis.cancel();
+function speakGreet(){ if(typeof AI_ENFORCE!=='undefined' && AI_ENFORCE && !aiAllowed()){ try{ avatarVoiceHint(); }catch(e){} return; } /* izin kapalı → karşılamada tarayıcı sesine düşme */
+  try{ if(!('speechSynthesis'in window)||!__greetText)return; speechSynthesis.cancel();
   var male=avatarGender()==='m'; const v=pickTRVoice(male)||__ttsVoice; const parts=(__greetText.match(/[^.!?]+[.!?]*/g)||[__greetText]).map(function(x){return x.trim();}).filter(Boolean);
   parts.forEach(function(p,i){ const u=new SpeechSynthesisUtterance(p); if(v){u.voice=v;u.lang=v.lang;}else u.lang='tr-TR'; u.rate=Math.max(0.5,Math.min(1.5,1.02*userSpeed()));u.pitch=male?0.86:1.16;u.volume=1; if(i===0)u.onstart=function(){__greetSpoke=true;}; speechSynthesis.speak(u); }); }catch(e){} }
 function greetText(has){ if(has&&profile&&profile.name) return 'Merhaba '+profile.name+'! Bugün de çalışmaya hazır mısın? Güzel ve eğlenceli bir derse başlayalım mı?';
@@ -1517,7 +1531,7 @@ function scrCards(){ stopAll(); cardIdx=0; hideMode=false;
   if(roster.length===0) roster=WORDS.slice(0,SESS);
   try{ roster.sort(function(a,b){ return (has3D(b.w)?1:0)-(has3D(a.w)?1:0); }); }catch(e){}
   app.innerHTML=`<div class="screen">
-    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s311</span></div>
+    <div class="hdr"><span class="crumb">${currentTopic.emoji} <b>${currentTopic.name}</b></span><span class="phase">Görsel kartlar · s312</span></div>
     <div class="dots" id="cdots"></div>
     <div class="stage" id="stage"></div>
     <div style="text-align:center;flex-shrink:0"><button class="skip" id="tgl" onclick="toggleHide()">Anlamı gizle · kendini test et</button><button class="skip" id="asMute" onclick="toggleAutoSpeak()" style="margin-left:8px">${autoSpeakOn()?'🔊 Oto-ses: açık':'🔇 Oto-ses: kapalı'}</button></div>
